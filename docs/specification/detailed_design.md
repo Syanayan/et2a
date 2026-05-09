@@ -90,6 +90,18 @@ export interface ProjectConfig {
   integration: IntegrationConfig;
 }
 
+export interface IntegrationConfig {
+  api: LocalApiConfig;
+}
+
+export interface LocalApiConfig {
+  enabled: boolean;
+  bind: "127.0.0.1";
+  port: number;
+  tokenEnv: "KOUSU_API_TOKEN";
+  startupMode?: "manual" | "auto";
+}
+
 export interface ScheduleConfig {
   startDate: DateYmd;
   endDate: DateYmd;
@@ -153,16 +165,17 @@ NG時:
 
 ## 4.1 読み込み候補探索
 
-1. `kousu.config.json`
+1. `kousu.projects/*.local.json`
 2. `kousu.projects/*.json`
-3. `kousu.projects/*.local.json`
+3. `kousu.config.json`
 
 ## 4.2 アクティブプロジェクト解決アルゴリズム
 
 1. UI選択中 `selectedProjectId` があれば採用。
 2. `kousu.activeProjectId` 設定を参照。
 3. `kousu.config.json` が単一構成なら採用。
-4. `kousu.projects/*.json` から `projectId` 昇順先頭を採用。
+4. 複数候補が残る場合は「プロジェクト選択クイックピック」を表示してユーザー選択。
+5. 非対話コンテキスト（API経由など）では `projectId` 昇順先頭を採用。
 
 ## 4.3 競合解決
 
@@ -198,7 +211,11 @@ interface ConflictRecord {
 
 - `averageVelocity = actual / elapsedWorkingDays`
 - `predictedTotalEffort = averageVelocity * totalWorkingDays`
-- `remainingEffort = budget - actual`（`budget` は bufferMode 反映）
+- `remainingEffort = budget - actual`
+
+`budget` の定義:
+- `exclusive`: `budget = total + buffer`（バッファ外数）
+- `inclusive`: `budget = total`（バッファ内数、閾値判定に `buffer` を利用）
 
 ### 5.2.2 枯渇予測日
 
@@ -216,9 +233,18 @@ interface ConflictRecord {
 
 `alertEvaluator.evaluate(config, forecast): AlertState`
 
-- 正常: 実績 < (総工数 - バッファ) 且つ 予測 <= 閾値
-- 注意: 実績がバッファ突入（閾値以上〜総工数以下）
-- 警告: 実績超過 または 予測超過
+前提値:
+- `thresholdActual`（注意開始）
+  - `exclusive`: `total - buffer`
+  - `inclusive`: `total - buffer`
+- `thresholdHard`（上限）
+  - `exclusive`: `total + buffer`
+  - `inclusive`: `total`
+
+判定:
+- 正常: `actual < thresholdActual` かつ `predictedTotalEffort <= thresholdHard`
+- 注意: `thresholdActual <= actual <= thresholdHard`
+- 警告: `actual > thresholdHard` または `predictedTotalEffort > thresholdHard`
 
 ---
 
@@ -235,6 +261,19 @@ interface ConflictRecord {
 
 ### GET `/api/v1/projects/:id/progress`
 - 200: `ProgressDto`
+
+```ts
+interface ProgressDto {
+  projectId: string;
+  projectName: string;
+  progressRate: number; // 0-100
+  remainingEffort: number;
+  predictedEndDate?: DateYmd;
+  alertLevel: "normal" | "caution" | "warning";
+  forecastStatus: ForecastResult["status"];
+  updatedAtUtc: string;
+}
+```
 - 404: `project_not_found`
 - 401: `unauthorized`
 
@@ -245,6 +284,19 @@ interface ConflictRecord {
 
 ### POST `/api/v1/projects/:id/holidays/sync`
 - 入力: `HolidaySyncRequest`
+
+```ts
+interface HolidaySyncRequest {
+  sources: Array<{
+    kind: "company" | "member";
+    type: "file" | "api" | "csv";
+    path?: string;
+    endpoint?: string;
+    memberName?: string;
+  }>;
+  dryRun?: boolean;
+}
+```
 - 202: 非同期同期ジョブ受理
 - 503: `source_unavailable`
 
