@@ -184,7 +184,7 @@
 
 ## フェーズ3: Application（ユースケース）
 
-### [ ] TASK-10: 初期化/読み込みユースケース
+### [x] TASK-10: 初期化/読み込みユースケース
 **目的**
 - `initializeProject` / `loadActiveProject` を実装し、起動時の状態確立を行う。
 
@@ -196,9 +196,9 @@
 - 起動文脈に応じて適切なプロジェクトが一意に選ばれる。
 
 **確認チェック**
-- [ ] selectedProjectId 優先が機能
-- [ ] quickPick 分岐が機能
-- [ ] 非対話フォールバックが機能
+- [x] selectedProjectId 優先が機能
+- [x] quickPick 分岐が機能
+- [x] 非対話フォールバックが機能
 
 ### [ ] TASK-11: 実績更新/再計算ユースケース
 **目的**
