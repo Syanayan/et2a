@@ -1,0 +1,10 @@
+{
+  "name": "et2a",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node --check src/extension.js && node --check src/presentation/extension.js && node --check src/domain/workingDayCalculator.js && node --check src/domain/types.js",
+    "test": "node --test test/*.test.js"
+  }
+}
