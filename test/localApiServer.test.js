@@ -49,6 +49,29 @@ function createResponseRecorder() {
   };
 }
 
+function createJsonRequest({ method, authorization, url, body }) {
+  const handlers = {};
+  return {
+    method,
+    url,
+    headers: {
+      authorization,
+      ...(body !== undefined ? { 'content-type': 'application/json' } : {})
+    },
+    on(event, handler) {
+      handlers[event] = handler;
+    },
+    emitBody() {
+      if (body !== undefined && handlers.data) {
+        handlers.data(JSON.stringify(body));
+      }
+      if (handlers.end) {
+        handlers.end();
+      }
+    }
+  };
+}
+
 test('does not start when api is disabled or token missing', async () => {
   const http = createFakeHttp();
 
@@ -124,4 +147,95 @@ test('returns 401 for invalid auth and blocks with 429 after 5 failures for 5 mi
   const afterBlock = createResponseRecorder();
   handler({ method: 'GET', headers: { authorization: 'Bearer secret' } }, afterBlock);
   assert.equal(afterBlock.statusCode, 404);
+});
+
+test('GET /api/v1/projects/:id/progress returns 200 and 404', async () => {
+  const http = createFakeHttp();
+  await createLocalApiServer({
+    config: { enabled: true, port: 4567, token: 'secret' },
+    http,
+    handlers: {
+      getProgress: async (projectId) => {
+        if (projectId === 'missing') {
+          return null;
+        }
+        return { projectId, progressRate: 30 };
+      }
+    }
+  });
+
+  const handler = http.servers[0].handler;
+  const okRes = createResponseRecorder();
+  await handler({ method: 'GET', url: '/api/v1/projects/p-001/progress', headers: { authorization: 'Bearer secret' } }, okRes);
+  assert.equal(okRes.statusCode, 200);
+  assert.deepEqual(JSON.parse(okRes.body), { projectId: 'p-001', progressRate: 30 });
+
+  const notFoundRes = createResponseRecorder();
+  await handler({ method: 'GET', url: '/api/v1/projects/missing/progress', headers: { authorization: 'Bearer secret' } }, notFoundRes);
+  assert.equal(notFoundRes.statusCode, 404);
+  assert.equal(JSON.parse(notFoundRes.body).error, 'project_not_found');
+});
+
+test('PATCH /api/v1/projects/:id/effort returns 200 and 400', async () => {
+  const http = createFakeHttp();
+  await createLocalApiServer({
+    config: { enabled: true, port: 4567, token: 'secret' },
+    http,
+    handlers: {
+      updateEffort: async (projectId, payload) => {
+        if (payload.actual < 0) {
+          return { error: 'validation_error' };
+        }
+        return { projectId, effort: payload };
+      }
+    }
+  });
+
+  const handler = http.servers[0].handler;
+  const okReq = createJsonRequest({ method: 'PATCH', authorization: 'Bearer secret', url: '/api/v1/projects/p-001/effort', body: { actual: 10 } });
+  const okRes = createResponseRecorder();
+  const okPromise = handler(okReq, okRes);
+  okReq.emitBody();
+  await okPromise;
+  assert.equal(okRes.statusCode, 200);
+
+  const badReq = createJsonRequest({ method: 'PATCH', authorization: 'Bearer secret', url: '/api/v1/projects/p-001/effort', body: { actual: -1 } });
+  const badRes = createResponseRecorder();
+  const badPromise = handler(badReq, badRes);
+  badReq.emitBody();
+  await badPromise;
+  assert.equal(badRes.statusCode, 400);
+  assert.equal(JSON.parse(badRes.body).error, 'validation_error');
+});
+
+test('POST /api/v1/projects/:id/holidays/sync returns 202 and 503', async () => {
+  const http = createFakeHttp();
+  await createLocalApiServer({
+    config: { enabled: true, port: 4567, token: 'secret' },
+    http,
+    handlers: {
+      syncHolidays: async (projectId, payload) => {
+        if (payload.sources?.length === 0) {
+          return { error: 'source_unavailable' };
+        }
+        return { accepted: true, projectId };
+      }
+    }
+  });
+
+  const handler = http.servers[0].handler;
+  const okReq = createJsonRequest({ method: 'POST', authorization: 'Bearer secret', url: '/api/v1/projects/p-001/holidays/sync', body: { sources: [{ kind: 'company', type: 'file', path: '/tmp/a' }] } });
+  const okRes = createResponseRecorder();
+  const okPromise = handler(okReq, okRes);
+  okReq.emitBody();
+  await okPromise;
+  assert.equal(okRes.statusCode, 202);
+
+  const failReq = createJsonRequest({ method: 'POST', authorization: 'Bearer secret', url: '/api/v1/projects/p-001/holidays/sync', body: { sources: [] } });
+  const failRes = createResponseRecorder();
+  const failPromise = handler(failReq, failRes);
+  failReq.emitBody();
+  await failPromise;
+  assert.equal(failRes.statusCode, 503);
+  assert.equal(JSON.parse(failRes.body).error, 'source_unavailable');
 });
