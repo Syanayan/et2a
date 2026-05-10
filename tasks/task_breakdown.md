@@ -79,7 +79,7 @@
 - [x] period_closed テスト通過
 - [x] exceededEffort 算出テスト通過
 
-### [ ] TASK-04: 警告判定ロジック（alertEvaluator）
+### [x] TASK-04: 警告判定ロジック（alertEvaluator）
 **目的**
 - 設計書 5.3 の閾値判定を実装する。
 
@@ -91,8 +91,8 @@
 - actual と predictedTotalEffort の組み合わせで仕様通りの警告レベルを返却。
 
 **確認チェック**
-- [ ] 正常→注意→警告の境界テスト通過
-- [ ] inclusive/exclusive 両モードのテスト通過
+- [x] 正常→注意→警告の境界テスト通過
+- [x] inclusive/exclusive 両モードのテスト通過
 
 ---
 

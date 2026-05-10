@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node --check src/extension.js && node --check src/presentation/extension.js && node --check src/domain/workingDayCalculator.js && node --check src/domain/types.js",
+    "build": "node --check src/extension.js && node --check src/presentation/extension.js && node --check src/domain/workingDayCalculator.js && node --check src/domain/forecastCalculator.js && node --check src/domain/alertEvaluator.js && node --check src/domain/types.js",
     "test": "node --test test/*.test.js"
   }
 }
