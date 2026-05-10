@@ -1,6 +1,7 @@
 // Presentation層はapplication層のみを参照する。domain/infrastructureへの直接依存は禁止。
 import { KousuSidebarProvider } from './sidebar.js';
 import { KousuDashboard } from './dashboard.js';
+import { NotificationRouter } from './notifier.js';
 
 const COMMAND_IDS = [
   'kousu.selectProject',
@@ -12,6 +13,7 @@ const COMMAND_IDS = [
 export function activate(options = {}) {
   const { vscode, initialViewState, initialDashboardState } = options;
   const dashboard = new KousuDashboard(vscode, initialDashboardState);
+  const notifier = new NotificationRouter(vscode, options.now);
 
   if (vscode?.commands?.registerCommand && vscode?.window?.createTreeView) {
     const provider = new KousuSidebarProvider(initialViewState);
@@ -27,7 +29,8 @@ export function activate(options = {}) {
   return {
     status: 'activated',
     updateDashboard: (state) => dashboard.update(state),
-    notifyDashboardError: (message) => dashboard.error(message)
+    notifyDashboardError: (message) => dashboard.error(message),
+    notify: (notification) => notifier.notify(notification)
   };
 }
 
