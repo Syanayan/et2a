@@ -8,6 +8,22 @@ const DEFAULT_STATE = {
 export class KousuSidebarProvider {
   constructor(initialState = DEFAULT_STATE) {
     this.state = { ...DEFAULT_STATE, ...initialState };
+    this._listeners = [];
+    this._onDidChangeTreeData = {
+      fire: () => {
+        for (const listener of this._listeners) {
+          listener(undefined);
+        }
+      },
+    };
+    this.onDidChangeTreeData = (listener) => {
+      this._listeners.push(listener);
+      return { dispose: () => { this._listeners = this._listeners.filter((l) => l !== listener); } };
+    };
+  }
+
+  getTreeItem(element) {
+    return element;
   }
 
   getChildren() {

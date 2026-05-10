@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0.0",
+  "projectId": "sample-project",
+  "schedule": {
+    "startDate": "2026-04-01",
+    "endDate": "2026-06-30"
+  },
+  "effort": {
+    "total": 60,
+    "buffer": 5,
+    "actual": 10,
+    "budgetMode": "inclusive"
+  },
+  "members": [
+    { "name": "Alice", "dailyEffort": 1.0 },
+    { "name": "Bob",   "dailyEffort": 0.5 }
+  ],
+  "calendar": {
+    "holidays": [],
+    "holidaySources": []
+  }
+}

@@ -1,8 +1,43 @@
 {
   "name": "et2a",
+  "displayName": "Kousu",
+  "description": "工数管理 VS Code 拡張",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "publisher": "et2a",
+  "engines": {
+    "vscode": "^1.77.0"
+  },
+  "main": "./src/vscodeMain.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      { "command": "kousu.selectProject", "title": "Select Project", "category": "Kousu" },
+      { "command": "kousu.updateActual",  "title": "Update Actual Effort", "category": "Kousu" },
+      { "command": "kousu.openDashboard", "title": "Open Dashboard", "category": "Kousu" },
+      { "command": "kousu.syncHolidays", "title": "Sync Holidays", "category": "Kousu" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "kousu",
+          "title": "Kousu",
+          "icon": "./resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "kousu": [
+        {
+          "id": "kousu.sidebar",
+          "name": "Project Status"
+        }
+      ]
+    }
+  },
   "scripts": {
     "build": "node --check src/extension.js && node --check src/presentation/extension.js && node --check src/domain/workingDayCalculator.js && node --check src/domain/forecastCalculator.js && node --check src/domain/alertEvaluator.js && node --check src/domain/types.js",
     "test": "node --test test/*.test.js"

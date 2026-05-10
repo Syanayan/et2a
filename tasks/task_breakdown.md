@@ -355,6 +355,31 @@
 - [x] KPI即時更新OK
 - [x] 競合表示OK
 
+### [x] TASK-20: コマンドとユースケースの配線
+
+**目的**
+
+- VS Code コマンドを実際のユースケースに接続し、拡張機能を完全に動作させる。
+
+**作業内容**
+
+- 起動時に `loadProjectConfigs(workspaceRoot)` でコンフィグを読み込む。
+- `kousu.selectProject` → `initializeProject` を呼び、サイドバーを更新する。
+- `kousu.updateActual` → 入力ダイアログ → `updateActualEffort` → サイドバー/ダッシュボード更新。
+- `kousu.syncHolidays` → `syncHolidaysUsecase` → ダッシュボード更新。
+- `vscodeMain.js` で起動時のプロジェクト解決フローを実装する。
+
+**DoD**
+
+- 4コマンドがそれぞれ対応するユースケースと接続され、結果が UI に反映される。
+
+**確認チェック**
+
+- [x] 起動時にコンフィグが読み込まれサイドバーに表示される
+- [x] `kousu.updateActual` で実績を入力するとサイドバーとダッシュボードが更新される
+- [x] `kousu.syncHolidays` で同期結果がダッシュボードに反映される
+- [x] `kousu.selectProject` でプロジェクトを切り替えられる
+
 ---
 
 ## 横断タスク（並行推進）
