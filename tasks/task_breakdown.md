@@ -60,7 +60,7 @@
 - [x] 重複休暇が1日として扱われる
 - [x] start=end の境界ケースが通る
 
-### [ ] TASK-03: 予測計算ロジック（forecastCalculator）
+### [x] TASK-03: 予測計算ロジック（forecastCalculator）
 **目的**
 - 設計書 5.2 の算出式・ゼロ状態・枯渇日計算を実装する。
 
@@ -74,10 +74,10 @@
 - 正常系/異常系で `ForecastResult` の status と値が仕様どおり。
 
 **確認チェック**
-- [ ] 通常ケーステスト通過
-- [ ] insufficient_data テスト通過
-- [ ] period_closed テスト通過
-- [ ] exceededEffort 算出テスト通過
+- [x] 通常ケーステスト通過
+- [x] insufficient_data テスト通過
+- [x] period_closed テスト通過
+- [x] exceededEffort 算出テスト通過
 
 ### [ ] TASK-04: 警告判定ロジック（alertEvaluator）
 **目的**
