@@ -7,12 +7,14 @@ function createFakeVscode() {
   const treeViews = [];
   const providers = new Map();
   const webviewPanels = [];
+  const notifications = [];
 
   return {
     commands,
     treeViews,
     providers,
     webviewPanels,
+    notifications,
     api: {
       commands: {
         registerCommand(commandId, handler) {
@@ -21,6 +23,18 @@ function createFakeVscode() {
         }
       },
       window: {
+        showInformationMessage(message) {
+          notifications.push({ level: 'info', message });
+          return Promise.resolve(undefined);
+        },
+        showWarningMessage(message) {
+          notifications.push({ level: 'warn', message });
+          return Promise.resolve(undefined);
+        },
+        showErrorMessage(message) {
+          notifications.push({ level: 'error', message });
+          return Promise.resolve(undefined);
+        },
         createTreeView(viewId, options) {
           treeViews.push({ viewId, options });
           if (options?.treeDataProvider) {
@@ -124,4 +138,29 @@ test('openDashboard posts init and update/error messages to Webview', async () =
     type: 'dashboard:error',
     payload: { message: 'sync failed' }
   });
+});
+
+test('routes notifications by level and debounces duplicates within 30 seconds', async () => {
+  const fake = createFakeVscode();
+  let now = 1_000;
+  const activated = activate({
+    vscode: fake.api,
+    now: () => now
+  });
+
+  await activated.notify({ level: 'info', message: '同期完了' });
+  await activated.notify({ level: 'warn', message: '同期失敗' });
+  await activated.notify({ level: 'error', message: '保存エラー' });
+  await activated.notify({ level: 'warn', message: '同期失敗' });
+
+  assert.deepEqual(fake.notifications, [
+    { level: 'info', message: '同期完了' },
+    { level: 'warn', message: '同期失敗' },
+    { level: 'error', message: '保存エラー' }
+  ]);
+
+  now += 30_001;
+  await activated.notify({ level: 'warn', message: '同期失敗' });
+
+  assert.deepEqual(fake.notifications[3], { level: 'warn', message: '同期失敗' });
 });
