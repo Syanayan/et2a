@@ -71,8 +71,42 @@ export class KousuDashboard {
     </section>
     <script>
       const byId = (id) => document.getElementById(id);
-      const vscode = acquireVsCodeApi ? acquireVsCodeApi() : null;
+      const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
       const setText = (id, value) => { const el = byId(id); if (el) el.textContent = value ?? '-'; };
+      function pointsFromSeries(series = [], width = 640, height = 220, maxY = 1) {
+        if (!Array.isArray(series) || series.length === 0) return '';
+        const stepX = series.length > 1 ? width / (series.length - 1) : width / 2;
+        return series
+          .map((value, index) => {
+            const x = Math.round(index * stepX);
+            const y = Math.round(height - (Math.max(0, Number(value) || 0) / maxY) * (height - 20) - 10);
+            return x + ',' + y;
+          })
+          .join(' ');
+      }
+      function drawBurndown(state = {}) {
+        const svg = byId('burndown-chart');
+        if (!svg) return;
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+        const rows = Array.isArray(state.burndown) ? state.burndown : [];
+        if (rows.length === 0) return;
+        const actualSeries = rows.map((row) => Number(row.actual ?? row.actualEffort ?? 0));
+        const predictedSeries = rows.map((row) => Number(row.predicted ?? row.predictedTotalEffort ?? row.actual ?? 0));
+        const maxY = Math.max(1, ...actualSeries, ...predictedSeries);
+        const actualLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        actualLine.setAttribute('fill', 'none');
+        actualLine.setAttribute('stroke', '#007acc');
+        actualLine.setAttribute('stroke-width', '2');
+        actualLine.setAttribute('points', pointsFromSeries(actualSeries, 640, 220, maxY));
+        const predictedLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        predictedLine.setAttribute('fill', 'none');
+        predictedLine.setAttribute('stroke', '#f39c12');
+        predictedLine.setAttribute('stroke-width', '2');
+        predictedLine.setAttribute('stroke-dasharray', '4 4');
+        predictedLine.setAttribute('points', pointsFromSeries(predictedSeries, 640, 220, maxY));
+        svg.appendChild(actualLine);
+        svg.appendChild(predictedLine);
+      }
       function render(state = {}) {
         const kpi = state.kpi ?? {};
         const forecast = state.forecast ?? {};
@@ -85,6 +119,7 @@ export class KousuDashboard {
         setText('depletion-exclusive', forecast.depletionDate ?? '-');
         setText('depletion-inclusive', forecast.depletionDateWithBuffer ?? '-');
         setText('sync-status', '同期状態: ' + (state.syncStatus?.status ?? 'idle'));
+        drawBurndown(state);
       }
       window.addEventListener('message', (event) => {
         const { type, payload } = event.data || {};

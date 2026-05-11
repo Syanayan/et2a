@@ -130,6 +130,9 @@ test('openDashboard posts init and update/error messages to Webview', async () =
   assert.match(panel.webview.html, /id="kpi-total"/);
   assert.match(panel.webview.html, /id="burndown-chart"/);
   assert.match(panel.webview.html, /id="sync-status"/);
+  assert.match(panel.webview.html, /function drawBurndown/);
+  assert.match(panel.webview.html, /createElementNS\('http:\/\/www\.w3\.org\/2000\/svg', 'polyline'\)/);
+  assert.match(panel.webview.html, /typeof acquireVsCodeApi === 'function'/);
   assert.match(panel.webview.html, /type === 'dashboard:update'/);
   assert.match(panel.webview.html, /type === 'dashboard:error'/);
   assert.equal(panel.postedMessages.length, 1);
