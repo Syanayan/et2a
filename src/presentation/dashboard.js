@@ -16,19 +16,17 @@ export class KousuDashboard {
     if (!this.vscode?.window?.createWebviewPanel) {
       return null;
     }
-    const wasCreated = !this.panel;
-    this.panel =
-      this.panel ??
-      this.vscode.window.createWebviewPanel(
-        'kousu.dashboard',
-        'Kousu Dashboard',
-        {},
-        { enableScripts: true }
-      );
-    this.panel.webview.html = this.renderHtml();
-    if (wasCreated) {
-      this.post('dashboard:init', this.state);
+    if (this.panel) {
+      return this.panel;
     }
+    this.panel = this.vscode.window.createWebviewPanel(
+      'kousu.dashboard',
+      'Kousu Dashboard',
+      {},
+      { enableScripts: true }
+    );
+    this.panel.webview.html = this.renderHtml();
+    this.post('dashboard:init', this.state);
     return this.panel;
   }
 
