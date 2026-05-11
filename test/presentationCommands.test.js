@@ -23,6 +23,7 @@ function createFakeVscode() {
         }
       },
       window: {
+        showInputBox: async () => undefined,
         showInformationMessage(message) {
           notifications.push({ level: 'info', message });
           return Promise.resolve(undefined);
@@ -87,6 +88,7 @@ test('registers required commands and sidebar TreeView nodes', async () => {
   assert.deepEqual(
     fake.commands.map((x) => x.commandId).sort(),
     [
+      'kousu.initializeProject',
       'kousu.openDashboard',
       'kousu.selectProject',
       'kousu.syncHolidays',
@@ -108,6 +110,29 @@ test('registers required commands and sidebar TreeView nodes', async () => {
       'Alert: 注意'
     ]
   );
+});
+
+test('initializeProject command collects inputs, saves config, and opens dashboard', async () => {
+  const fake = createFakeVscode();
+  const answers = ['64', '2026-12-31', '8', 'New Project'];
+  fake.api.window.showInputBox = async () => answers.shift();
+  const saved = [];
+
+  activate({
+    vscode: fake.api,
+    saveProjectConfig: async (config) => { saved.push(config); },
+  });
+
+  const initialize = fake.commands.find((x) => x.commandId === 'kousu.initializeProject');
+  assert.ok(initialize);
+  await initialize.handler();
+
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].projectId, 'new-project');
+  assert.equal(saved[0].effort.total, 64);
+  assert.equal(saved[0].effort.buffer, 8);
+  assert.equal(fake.webviewPanels.length, 1);
+  assert.equal(fake.webviewPanels[0].postedMessages[0].type, 'dashboard:init');
 });
 
 test('openDashboard posts init and update/error messages to Webview', async () => {

@@ -15,6 +15,7 @@
   ],
   "contributes": {
     "commands": [
+      { "command": "kousu.initializeProject", "title": "Initialize Project", "category": "Kousu" },
       { "command": "kousu.selectProject", "title": "Select Project", "category": "Kousu" },
       { "command": "kousu.updateActual",  "title": "Update Actual Effort", "category": "Kousu" },
       { "command": "kousu.openDashboard", "title": "Open Dashboard", "category": "Kousu" },
