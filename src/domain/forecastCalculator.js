@@ -11,7 +11,7 @@ const ceil = Math.ceil;
  * today:string,
  * endDate?:string,
  * remainingWorkingDays:string[],
- * previousOkResult?:{averageVelocity:number,predictedTotalEffort:number,remainingEffort:number,depletionDate?:string|null,exceededEffort:number}
+ * previousOkResult?:{averageVelocity:number,predictedTotalEffort:number,remainingEffort:number,depletionDate?:string|null,depletionDateWithoutBuffer?:string|null,depletionDateWithBuffer?:string|null,exceededEffort:number}
  * }} input
  */
 export function calculateForecast(input) {
@@ -38,16 +38,24 @@ export function calculateForecast(input) {
     return baseResult('insufficient_data');
   }
 
-  let depletionDate = null;
-  let exceededEffort = 0;
-
-  if (remainingEffort < 0) {
-    depletionDate = input.today;
-    exceededEffort = Math.abs(remainingEffort);
-  } else if (averageVelocity > 0) {
-    const daysToDeplete = ceil(remainingEffort / averageVelocity);
-    depletionDate = input.remainingWorkingDays[daysToDeplete - 1] ?? null;
-  }
+  const depletionDateWithoutBuffer = calculateDepletionDate({
+    budget: input.total,
+    actual: input.actual,
+    averageVelocity,
+    today: input.today,
+    remainingWorkingDays: input.remainingWorkingDays
+  });
+  const depletionDateWithBuffer = calculateDepletionDate({
+    budget: input.total + input.buffer,
+    actual: input.actual,
+    averageVelocity,
+    today: input.today,
+    remainingWorkingDays: input.remainingWorkingDays
+  });
+  const depletionDate = input.budgetMode === 'exclusive'
+    ? depletionDateWithBuffer
+    : depletionDateWithoutBuffer;
+  const exceededEffort = Math.max(0, input.actual - budget);
 
   return {
     status: 'ok',
@@ -55,6 +63,8 @@ export function calculateForecast(input) {
     predictedTotalEffort,
     remainingEffort,
     depletionDate,
+    depletionDateWithoutBuffer,
+    depletionDateWithBuffer,
     exceededEffort
   };
 }
@@ -66,6 +76,16 @@ function baseResult(status) {
     predictedTotalEffort: 0,
     remainingEffort: 0,
     depletionDate: null,
+    depletionDateWithoutBuffer: null,
+    depletionDateWithBuffer: null,
     exceededEffort: 0
   };
+}
+
+function calculateDepletionDate({ budget, actual, averageVelocity, today, remainingWorkingDays }) {
+  const remaining = budget - actual;
+  if (remaining < 0) return today;
+  if (averageVelocity <= 0) return null;
+  const daysToDeplete = ceil(remaining / averageVelocity);
+  return remainingWorkingDays[daysToDeplete - 1] ?? null;
 }
