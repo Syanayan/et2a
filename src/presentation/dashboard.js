@@ -116,8 +116,8 @@ export class KousuDashboard {
         setText('kpi-remaining', forecast.remainingEffort ?? kpi.remainingEffort ?? '-');
         setText('kpi-finish-date', forecast.depletionDate ?? kpi.predictedEndDate ?? '-');
         setText('buffer-threshold', state.alert?.label ?? '-');
-        setText('depletion-exclusive', forecast.depletionDate ?? '-');
-        setText('depletion-inclusive', forecast.depletionDateWithBuffer ?? '-');
+        setText('depletion-exclusive', forecast.depletionDateWithoutBuffer ?? forecast.depletionDate ?? '-');
+        setText('depletion-inclusive', forecast.depletionDateWithBuffer ?? forecast.depletionDate ?? '-');
         setText('sync-status', '同期状態: ' + (state.syncStatus?.status ?? 'idle'));
         drawBurndown(state);
       }

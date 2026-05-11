@@ -69,3 +69,23 @@ test('予算超過時は exceededEffort と depletionDate=today', () => {
   assert.equal(result.exceededEffort, 10);
   assert.equal(result.depletionDate, '2026-05-10');
 });
+
+test('枯渇予測をバッファ除外/込みの2系統で返す', () => {
+  const result = calculateForecast({
+    actual: 20,
+    elapsedWorkingDays: 10,
+    totalWorkingDays: 30,
+    total: 30,
+    buffer: 10,
+    budgetMode: 'inclusive',
+    today: '2026-05-10',
+    remainingWorkingDays: [
+      '2026-05-11', '2026-05-12', '2026-05-13', '2026-05-14', '2026-05-15',
+      '2026-05-18', '2026-05-19', '2026-05-20', '2026-05-21', '2026-05-22'
+    ]
+  });
+
+  assert.equal(result.depletionDateWithoutBuffer, '2026-05-15');
+  assert.equal(result.depletionDateWithBuffer, '2026-05-22');
+  assert.equal(result.depletionDate, '2026-05-15');
+});
