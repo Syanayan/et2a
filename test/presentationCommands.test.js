@@ -143,7 +143,7 @@ test('initializeProject command collects inputs, saves config, and opens dashboa
 
 test('initializeProject command does not save when validateProjectConfig fails', async () => {
   const fake = createFakeVscode();
-  const answers = ['64', 'invalid-date', '8', 'New Project'];
+  const answers = ['64', '2026-12-31', '8', 'New Project'];
   fake.api.window.showInputBox = async () => answers.shift();
   const saved = [];
 
@@ -161,6 +161,35 @@ test('initializeProject command does not save when validateProjectConfig fails',
 
   assert.equal(saved.length, 0);
   assert.deepEqual(fake.notifications[0], { level: 'error', message: 'schedule.endDate must be YYYY-MM-DD' });
+});
+
+test('initializeProject shows immediate error for invalid deadline format', async () => {
+  const fake = createFakeVscode();
+  const answers = ['64', 'invalid-date', 'SHOULD_NOT_BE_USED'];
+  let promptCount = 0;
+  let validated = 0;
+  fake.api.window.showInputBox = async () => {
+    promptCount += 1;
+    return answers.shift();
+  };
+  const saved = [];
+
+  activate({
+    vscode: fake.api,
+    saveProjectConfig: async (config) => { saved.push(config); },
+    validateProjectConfig: () => {
+      validated += 1;
+      return { ok: true, error: null };
+    },
+  });
+
+  const initialize = fake.commands.find((x) => x.commandId === 'kousu.initializeProject');
+  await initialize.handler();
+
+  assert.equal(promptCount, 2);
+  assert.equal(validated, 0);
+  assert.equal(saved.length, 0);
+  assert.deepEqual(fake.notifications[0], { level: 'error', message: 'Deadline must be in YYYY-MM-DD format.' });
 });
 
 test('openDashboard posts init and update/error messages to Webview', async () => {

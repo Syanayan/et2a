@@ -63,6 +63,10 @@ export function activate(options = {}) {
       }
       const endDate = await vscode.window.showInputBox({ prompt: 'Enter deadline (YYYY-MM-DD)' });
       if (endDate === undefined) return;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate) || Number.isNaN(Date.parse(endDate))) {
+        vscode.window.showErrorMessage('Deadline must be in YYYY-MM-DD format.');
+        return;
+      }
       const bufferInput = await vscode.window.showInputBox({ prompt: 'Enter buffer effort (person-days)' });
       if (bufferInput === undefined) return;
       const buffer = Number(bufferInput);
