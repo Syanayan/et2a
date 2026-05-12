@@ -4,6 +4,7 @@ import { loadProjectConfigs } from './infrastructure/configRepository.js';
 import { initializeProject } from './application/usecases/initializeProject.js';
 import { calculateWorkingDays } from './domain/workingDayCalculator.js';
 import { appendAuditLog } from './infrastructure/auditLogger.js';
+import { validateProjectConfig } from './infrastructure/configValidator.js';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -31,6 +32,7 @@ export async function activate(context) {
       const filePath = found?.filePath ?? path.join(workspaceRoot, 'kousu.config.json');
       return saveProjectConfig(config, filePath);
     },
+    validateProjectConfig,
     workingDayContext: { today, elapsedWorkingDays: 0, totalWorkingDays: 0, remainingWorkingDays: 0 },
   });
 

@@ -15,6 +15,7 @@ export function activate(options = {}) {
     workingDayContext = {},
     appendAuditLog,
     saveProjectConfig,
+    validateProjectConfig,
   } = options;
 
   const dashboard = new KousuDashboard(vscode, initialDashboardState);
@@ -62,10 +63,6 @@ export function activate(options = {}) {
       }
       const endDate = await vscode.window.showInputBox({ prompt: 'Enter deadline (YYYY-MM-DD)' });
       if (endDate === undefined) return;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate) || Number.isNaN(Date.parse(endDate))) {
-        vscode.window.showErrorMessage('Deadline must be in YYYY-MM-DD format.');
-        return;
-      }
       const bufferInput = await vscode.window.showInputBox({ prompt: 'Enter buffer effort (person-days)' });
       if (bufferInput === undefined) return;
       const buffer = Number(bufferInput);
@@ -90,6 +87,13 @@ export function activate(options = {}) {
         members: [],
         calendar: { holidays: [], holidaySources: [] },
       };
+      const validation = typeof validateProjectConfig === 'function'
+        ? validateProjectConfig(config)
+        : { ok: true, error: null };
+      if (!validation.ok) {
+        vscode.window.showErrorMessage(validation.error?.message ?? 'Invalid project config.');
+        return;
+      }
       await (saveProjectConfig ?? (() => Promise.resolve()))(config);
       const project = { config };
       projects.push(project);
