@@ -15,6 +15,7 @@ export function activate(options = {}) {
     workingDayContext = {},
     appendAuditLog,
     saveProjectConfig,
+    validateProjectConfig,
   } = options;
 
   const dashboard = new KousuDashboard(vscode, initialDashboardState);
@@ -52,6 +53,60 @@ export function activate(options = {}) {
     provider = new KousuSidebarProvider(initialViewState);
 
     vscode.commands.registerCommand('kousu.openDashboard', () => dashboard.open());
+    vscode.commands.registerCommand('kousu.initializeProject', async () => {
+      const totalInput = await vscode.window.showInputBox({ prompt: 'Enter total effort (person-days)' });
+      if (totalInput === undefined) return;
+      const total = Number(totalInput);
+      if (!Number.isFinite(total) || total <= 0) {
+        vscode.window.showErrorMessage('Total effort must be a positive number.');
+        return;
+      }
+      const endDate = await vscode.window.showInputBox({ prompt: 'Enter deadline (YYYY-MM-DD)' });
+      if (endDate === undefined) return;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate) || Number.isNaN(Date.parse(endDate))) {
+        vscode.window.showErrorMessage('Deadline must be in YYYY-MM-DD format.');
+        return;
+      }
+      const bufferInput = await vscode.window.showInputBox({ prompt: 'Enter buffer effort (person-days)' });
+      if (bufferInput === undefined) return;
+      const buffer = Number(bufferInput);
+      if (!Number.isFinite(buffer) || buffer < 0) {
+        vscode.window.showErrorMessage('Buffer effort must be a non-negative number.');
+        return;
+      }
+      const projectName = await vscode.window.showInputBox({ prompt: 'Enter project name' });
+      if (projectName === undefined) return;
+      const normalizedName = projectName.trim();
+      if (!normalizedName) {
+        vscode.window.showErrorMessage('Project name is required.');
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const projectId = normalizedName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
+      const config = {
+        schemaVersion: '1.0.0',
+        projectId,
+        schedule: { startDate: today, endDate },
+        effort: { total, buffer, actual: 0, budgetMode: 'inclusive' },
+        members: [],
+        calendar: { holidays: [], holidaySources: [] },
+      };
+      const validation = typeof validateProjectConfig === 'function'
+        ? validateProjectConfig(config)
+        : { ok: true, error: null };
+      if (!validation.ok) {
+        vscode.window.showErrorMessage(validation.error?.message ?? 'Invalid project config.');
+        return;
+      }
+      await (saveProjectConfig ?? (() => Promise.resolve()))(config);
+      const project = { config };
+      projects.push(project);
+      activeProject = project;
+      refreshSidebar(activeProject, null, null);
+      dashboard.open();
+      dashboard.update({ project: activeProject });
+      notifier.notify({ level: 'info', message: 'Project initialized.' });
+    });
 
     vscode.commands.registerCommand('kousu.selectProject', async () => {
       const result = await initializeProject({

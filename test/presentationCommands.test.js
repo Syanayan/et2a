@@ -23,6 +23,7 @@ function createFakeVscode() {
         }
       },
       window: {
+        showInputBox: async () => undefined,
         showInformationMessage(message) {
           notifications.push({ level: 'info', message });
           return Promise.resolve(undefined);
@@ -87,6 +88,7 @@ test('registers required commands and sidebar TreeView nodes', async () => {
   assert.deepEqual(
     fake.commands.map((x) => x.commandId).sort(),
     [
+      'kousu.initializeProject',
       'kousu.openDashboard',
       'kousu.selectProject',
       'kousu.syncHolidays',
@@ -108,6 +110,86 @@ test('registers required commands and sidebar TreeView nodes', async () => {
       'Alert: 注意'
     ]
   );
+});
+
+test('initializeProject command collects inputs, saves config, and opens dashboard', async () => {
+  const fake = createFakeVscode();
+  const answers = ['64', '2026-12-31', '8', 'New Project'];
+  fake.api.window.showInputBox = async () => answers.shift();
+  const saved = [];
+  let validated = 0;
+
+  activate({
+    vscode: fake.api,
+    saveProjectConfig: async (config) => { saved.push(config); },
+    validateProjectConfig: (config) => {
+      validated += 1;
+      return { ok: true, error: null };
+    },
+  });
+
+  const initialize = fake.commands.find((x) => x.commandId === 'kousu.initializeProject');
+  assert.ok(initialize);
+  await initialize.handler();
+
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].projectId, 'new-project');
+  assert.equal(saved[0].effort.total, 64);
+  assert.equal(saved[0].effort.buffer, 8);
+  assert.equal(validated, 1);
+  assert.equal(fake.webviewPanels.length, 1);
+  assert.equal(fake.webviewPanels[0].postedMessages[0].type, 'dashboard:init');
+});
+
+test('initializeProject command does not save when validateProjectConfig fails', async () => {
+  const fake = createFakeVscode();
+  const answers = ['64', '2026-12-31', '8', 'New Project'];
+  fake.api.window.showInputBox = async () => answers.shift();
+  const saved = [];
+
+  activate({
+    vscode: fake.api,
+    saveProjectConfig: async (config) => { saved.push(config); },
+    validateProjectConfig: () => ({
+      ok: false,
+      error: { code: 'validation_error', field: 'schedule.endDate', message: 'schedule.endDate must be YYYY-MM-DD' },
+    }),
+  });
+
+  const initialize = fake.commands.find((x) => x.commandId === 'kousu.initializeProject');
+  await initialize.handler();
+
+  assert.equal(saved.length, 0);
+  assert.deepEqual(fake.notifications[0], { level: 'error', message: 'schedule.endDate must be YYYY-MM-DD' });
+});
+
+test('initializeProject shows immediate error for invalid deadline format', async () => {
+  const fake = createFakeVscode();
+  const answers = ['64', 'invalid-date', 'SHOULD_NOT_BE_USED'];
+  let promptCount = 0;
+  let validated = 0;
+  fake.api.window.showInputBox = async () => {
+    promptCount += 1;
+    return answers.shift();
+  };
+  const saved = [];
+
+  activate({
+    vscode: fake.api,
+    saveProjectConfig: async (config) => { saved.push(config); },
+    validateProjectConfig: () => {
+      validated += 1;
+      return { ok: true, error: null };
+    },
+  });
+
+  const initialize = fake.commands.find((x) => x.commandId === 'kousu.initializeProject');
+  await initialize.handler();
+
+  assert.equal(promptCount, 2);
+  assert.equal(validated, 0);
+  assert.equal(saved.length, 0);
+  assert.deepEqual(fake.notifications[0], { level: 'error', message: 'Deadline must be in YYYY-MM-DD format.' });
 });
 
 test('openDashboard posts init and update/error messages to Webview', async () => {
