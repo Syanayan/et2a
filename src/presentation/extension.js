@@ -15,6 +15,7 @@ export function activate(options = {}) {
     workingDayContext = {},
     appendAuditLog,
     saveProjectConfig,
+    validateProjectConfig,
   } = options;
 
   const dashboard = new KousuDashboard(vscode, initialDashboardState);
@@ -63,6 +64,44 @@ export function activate(options = {}) {
         activeProject = result.project;
         refreshSidebar(activeProject, null, null);
       }
+    });
+
+    vscode.commands.registerCommand('kousu.initializeProject', async () => {
+      const totalInput = await vscode.window.showInputBox({ prompt: 'Enter total effort (person-days)' });
+      if (totalInput === undefined) return;
+      const endDate = await vscode.window.showInputBox({ prompt: 'Enter deadline (YYYY-MM-DD)' });
+      if (endDate === undefined) return;
+      const bufferInput = await vscode.window.showInputBox({ prompt: 'Enter buffer effort (person-days)' });
+      if (bufferInput === undefined) return;
+      const projectId = await vscode.window.showInputBox({ prompt: 'Enter project name (projectId)' });
+      if (projectId === undefined) return;
+
+      const today = new Date().toISOString().slice(0, 10);
+      const config = {
+        schemaVersion: '1.0.0',
+        projectId,
+        schedule: {
+          startDate: today,
+          endDate,
+        },
+        effort: {
+          total: Number(totalInput),
+          buffer: Number(bufferInput),
+          actual: 0,
+        },
+        members: [{ id: 'default', dailyEffort: 1 }],
+        calendar: { holidays: [] },
+      };
+
+      const validation = validateProjectConfig ? validateProjectConfig(config) : { ok: true, error: null };
+      if (!validation.ok) {
+        vscode.window.showErrorMessage(`Invalid project config: ${validation.error.message}`);
+        return;
+      }
+
+      await (saveProjectConfig ?? (() => Promise.resolve()))(config);
+      vscode.window.showInformationMessage('Kousu project initialized: kousu.config.json');
+      dashboard.open();
     });
 
     vscode.commands.registerCommand('kousu.updateActual', async () => {

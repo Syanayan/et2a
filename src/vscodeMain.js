@@ -6,6 +6,7 @@ import { calculateWorkingDays } from './domain/workingDayCalculator.js';
 import { appendAuditLog } from './infrastructure/auditLogger.js';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { validateProjectConfig } from './infrastructure/configValidator.js';
 
 const require = createRequire(import.meta.url);
 const vscode = require('vscode');
@@ -31,6 +32,7 @@ export async function activate(context) {
       const filePath = found?.filePath ?? path.join(workspaceRoot, 'kousu.config.json');
       return saveProjectConfig(config, filePath);
     },
+    validateProjectConfig,
     workingDayContext: { today, elapsedWorkingDays: 0, totalWorkingDays: 0, remainingWorkingDays: 0 },
   });
 

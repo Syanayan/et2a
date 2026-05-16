@@ -8,6 +8,7 @@ function createFakeVscode() {
   const providers = new Map();
   const webviewPanels = [];
   const notifications = [];
+  const inputs = [];
 
   return {
     commands,
@@ -15,6 +16,7 @@ function createFakeVscode() {
     providers,
     webviewPanels,
     notifications,
+    inputs,
     api: {
       commands: {
         registerCommand(commandId, handler) {
@@ -34,6 +36,9 @@ function createFakeVscode() {
         showErrorMessage(message) {
           notifications.push({ level: 'error', message });
           return Promise.resolve(undefined);
+        },
+        showInputBox() {
+          return Promise.resolve(inputs.shift());
         },
         createTreeView(viewId, options) {
           treeViews.push({ viewId, options });
@@ -87,6 +92,7 @@ test('registers required commands and sidebar TreeView nodes', async () => {
   assert.deepEqual(
     fake.commands.map((x) => x.commandId).sort(),
     [
+      'kousu.initializeProject',
       'kousu.openDashboard',
       'kousu.selectProject',
       'kousu.syncHolidays',
@@ -108,6 +114,50 @@ test('registers required commands and sidebar TreeView nodes', async () => {
       'Alert: 注意'
     ]
   );
+});
+
+test('initializeProject command validates/saves config and opens dashboard', async () => {
+  const fake = createFakeVscode();
+  fake.inputs.push('120', '2026-12-31', '12', 'alpha');
+  const saved = [];
+  const opened = [];
+
+  activate({
+    vscode: fake.api,
+    saveProjectConfig: async (config) => saved.push(config),
+    validateProjectConfig: () => ({ ok: true, error: null }),
+    initialDashboardState: { kpi: {} }
+  });
+
+  const initCommand = fake.commands.find((x) => x.commandId === 'kousu.initializeProject');
+  await initCommand.handler();
+
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].projectId, 'alpha');
+  assert.equal(saved[0].effort.total, 120);
+  assert.equal(saved[0].effort.buffer, 12);
+  assert.equal(saved[0].schedule.endDate, '2026-12-31');
+  assert.deepEqual(fake.notifications[0], { level: 'info', message: 'Kousu project initialized: kousu.config.json' });
+  assert.equal(fake.webviewPanels.length, 1);
+});
+
+test('initializeProject command aborts on validation error', async () => {
+  const fake = createFakeVscode();
+  fake.inputs.push('120', '2026-12-31', '12', 'bad id!');
+  const saved = [];
+
+  activate({
+    vscode: fake.api,
+    saveProjectConfig: async (config) => saved.push(config),
+    validateProjectConfig: () => ({ ok: false, error: { message: 'projectId must match [a-zA-Z0-9_-]{1,64}' } }),
+  });
+
+  const initCommand = fake.commands.find((x) => x.commandId === 'kousu.initializeProject');
+  await initCommand.handler();
+
+  assert.equal(saved.length, 0);
+  assert.match(fake.notifications[0].message, /Invalid project config/);
+  assert.equal(fake.notifications[0].level, 'error');
 });
 
 test('openDashboard posts init and update/error messages to Webview', async () => {
