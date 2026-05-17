@@ -292,12 +292,37 @@ test('setProjects updates workingDayContext used by updateActual', async () => {
   const openDashboard = fake.commands.find((x) => x.commandId === 'kousu.openDashboard');
   openDashboard.handler();
   const panel = fake.webviewPanels[0];
-  const updateMessage = panel.postedMessages.find((m) => m.type === 'dashboard:update');
+  const updateMessage = panel.postedMessages.find((m) => m.type === 'dashboard:update' && m.payload?.forecast);
   assert.equal(updateMessage.payload.forecast.status, 'ok');
   assert.equal(updateMessage.payload.forecast.predictedTotalEffort, 16);
 });
 
 
+
+
+test('setProjects seeds dashboard state with initial active project', async () => {
+  const fake = createFakeVscode();
+  const project = {
+    config: {
+      projectId: 'alpha',
+      schedule: { startDate: '2026-05-01', endDate: '2026-05-31' },
+      effort: { total: 20, buffer: 2, actual: 5, budgetMode: 'inclusive' },
+      members: [],
+      calendar: { holidays: [], holidaySources: [] },
+    },
+  };
+
+  const activated = activate({ vscode: fake.api });
+  activated.setProjects([project], project);
+
+  const openDashboard = fake.commands.find((x) => x.commandId === 'kousu.openDashboard');
+  openDashboard.handler();
+
+  const panel = fake.webviewPanels[0];
+  assert.equal(panel.postedMessages[0].type, 'dashboard:init');
+  assert.equal(panel.postedMessages[0].payload.project.config.projectId, 'alpha');
+  assert.equal(panel.postedMessages[0].payload.project.config.effort.actual, 5);
+});
 test('close disposes registered resources including dashboard panel', async () => {
   const fake = createFakeVscode();
   const activated = activate({ vscode: fake.api });
