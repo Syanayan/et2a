@@ -8,6 +8,7 @@ function createFakeVscode() {
   const providers = new Map();
   const webviewPanels = [];
   const notifications = [];
+  let disposedCount = 0;
 
   return {
     commands,
@@ -15,11 +16,12 @@ function createFakeVscode() {
     providers,
     webviewPanels,
     notifications,
+    get disposedCount() { return disposedCount; },
     api: {
       commands: {
         registerCommand(commandId, handler) {
           commands.push({ commandId, handler });
-          return { dispose() {} };
+          return { dispose() { disposedCount += 1; } };
         }
       },
       window: {
@@ -41,7 +43,7 @@ function createFakeVscode() {
           if (options?.treeDataProvider) {
             providers.set(viewId, options.treeDataProvider);
           }
-          return { dispose() {} };
+          return { dispose() { disposedCount += 1; } };
         },
         createWebviewPanel(viewType, title, showOptions, options) {
           const postedMessages = [];
@@ -63,7 +65,9 @@ function createFakeVscode() {
               }
             },
             postedMessages,
-            handlers
+            handlers,
+            disposed: false,
+            dispose() { this.disposed = true; disposedCount += 1; }
           };
           webviewPanels.push(panel);
           return panel;
@@ -291,4 +295,21 @@ test('setProjects updates workingDayContext used by updateActual', async () => {
   const updateMessage = panel.postedMessages.find((m) => m.type === 'dashboard:update');
   assert.equal(updateMessage.payload.forecast.status, 'ok');
   assert.equal(updateMessage.payload.forecast.predictedTotalEffort, 16);
+});
+
+
+test('close disposes registered resources including dashboard panel', async () => {
+  const fake = createFakeVscode();
+  const activated = activate({ vscode: fake.api });
+
+  const openDashboard = fake.commands.find((x) => x.commandId === 'kousu.openDashboard');
+  openDashboard.handler();
+  assert.equal(fake.webviewPanels.length, 1);
+  assert.equal(fake.webviewPanels[0].disposed, false);
+
+  assert.equal(typeof activated.close, 'function');
+  activated.close();
+
+  assert.equal(fake.webviewPanels[0].disposed, true);
+  assert.ok(fake.disposedCount >= 3);
 });

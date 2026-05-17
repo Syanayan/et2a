@@ -45,6 +45,13 @@ export class KousuDashboard {
     return this.panel?.webview?.postMessage({ type, payload });
   }
 
+  close() {
+    if (this.panel?.dispose) {
+      this.panel.dispose();
+    }
+    this.panel = null;
+  }
+
   renderHtml() {
     return `<!DOCTYPE html>
 <html lang="ja">
