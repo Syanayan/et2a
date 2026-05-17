@@ -22,6 +22,7 @@ export function activate(options = {}) {
   const notifier = new NotificationRouter(vscode, options.now);
   let activeProject = null;
   let provider = null;
+  const mutableWorkingDayContext = { ...workingDayContext };
 
   function sidebarStateFromProject(project, forecast, alert) {
     if (!project) {
@@ -136,10 +137,10 @@ export function activate(options = {}) {
       const result = await updateActualEffort({
         project: activeProject,
         nextActual: Number(input),
-        elapsedWorkingDays: workingDayContext.elapsedWorkingDays ?? 0,
-        totalWorkingDays: workingDayContext.totalWorkingDays ?? 0,
-        remainingWorkingDays: workingDayContext.remainingWorkingDays ?? 0,
-        today: workingDayContext.today ?? new Date().toISOString().slice(0, 10),
+        elapsedWorkingDays: mutableWorkingDayContext.elapsedWorkingDays ?? 0,
+        totalWorkingDays: mutableWorkingDayContext.totalWorkingDays ?? 0,
+        remainingWorkingDays: mutableWorkingDayContext.remainingWorkingDays ?? [],
+        today: mutableWorkingDayContext.today ?? new Date().toISOString().slice(0, 10),
         saveProjectConfig: saveProjectConfig ?? (() => Promise.resolve()),
         appendAuditLog,
       });
@@ -174,9 +175,12 @@ export function activate(options = {}) {
 
   return {
     status: 'activated',
-    setProjects: (newProjects, initialActiveProject) => {
+    setProjects: (newProjects, initialActiveProject, nextWorkingDayContext) => {
       projects.length = 0;
       projects.push(...newProjects);
+      if (nextWorkingDayContext) {
+        Object.assign(mutableWorkingDayContext, nextWorkingDayContext);
+      }
       if (initialActiveProject) {
         activeProject = initialActiveProject;
         refreshSidebar(activeProject, null, null);
