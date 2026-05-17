@@ -20,7 +20,7 @@ VS Code は `context.subscriptions.push(disposable)` に登録された disposab
 
 ## 確認チェック
 
-- [ ] `activate` の戻り値に `close` メソッドが存在する
-- [ ] `close()` 呼び出しでダッシュボードパネルが dispose される
-- [ ] `close()` 呼び出しでサイドバープロバイダのリスナーが解除される
-- [ ] 既存テストがすべて通過する
+- [x] `activate` の戻り値に `close` メソッドが存在する
+- [x] `close()` 呼び出しでダッシュボードパネルが dispose される
+- [x] `close()` 呼び出しでサイドバープロバイダのリスナーが解除される
+- [x] 既存テストがすべて通過する
