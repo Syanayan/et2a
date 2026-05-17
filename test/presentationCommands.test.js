@@ -234,6 +234,30 @@ test('openDashboard posts init and update/error messages to Webview', async () =
   });
 });
 
+test('syncHolidays shows warning when holidaySources is empty', async () => {
+  const fake = createFakeVscode();
+  const saved = [];
+  const extension = activate({
+    vscode: fake.api,
+    saveProjectConfig: async (config) => { saved.push(config); },
+  });
+
+  const config = {
+    schemaVersion: '1.0.0',
+    projectId: 'alpha',
+    schedule: { startDate: '2026-01-01', endDate: '2026-01-31' },
+    effort: { total: 10, buffer: 1, actual: 0, budgetMode: 'inclusive' },
+    members: [],
+    calendar: { holidays: [], holidaySources: [] },
+  };
+  extension.setProjects([{ config }], { config }, { today: '2026-01-10' });
+
+  await fake.commands.find((x) => x.commandId === 'kousu.syncHolidays').handler();
+
+  assert.deepEqual(fake.notifications.at(-1), { level: 'warn', message: 'Holiday sync sources are not configured.' });
+  assert.equal(saved.length, 0);
+});
+
 test('routes notifications by level and debounces duplicates within 30 seconds', async () => {
   const fake = createFakeVscode();
   let now = 1_000;

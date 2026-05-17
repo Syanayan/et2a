@@ -157,12 +157,16 @@ test('E2E: TASK-27主要フロー(初期化/表示/実績更新/祝日同期/停
     saveProjectConfig: async (config) => {
       savedConfigs.push(config);
     },
+    holidayLoaders: {
+      api: async () => ['2026-05-26'],
+    },
   });
 
   fake.inputs.push('100', '2026-06-30', '20', 'Task 27 Project');
   await fake.commands.get('kousu.initializeProject')();
   assert.equal(savedConfigs.length, 1);
   assert.equal(savedConfigs[0].projectId, 'task-27-project');
+  savedConfigs[0].calendar.holidaySources = [{ kind: 'company', type: 'api', endpoint: 'https://example.com/holidays' }];
 
   await fake.commands.get('kousu.openDashboard')();
   assert.ok(fake.postedMessages.some((message) => message.type === 'dashboard:init'));

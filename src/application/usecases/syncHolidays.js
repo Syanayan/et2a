@@ -5,6 +5,7 @@ export async function syncHolidaysUsecase(params) {
     project,
     dryRun = false,
     syncHolidays = syncHolidaysService,
+    loaders,
     saveProjectConfig,
     appendAuditLog,
   } = params;
@@ -15,6 +16,7 @@ export async function syncHolidaysUsecase(params) {
   const result = await syncHolidays({
     sources,
     currentHolidays,
+    loaders,
   });
 
   let nextProject = project;

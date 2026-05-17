@@ -16,6 +16,7 @@ export function activate(options = {}) {
     appendAuditLog,
     saveProjectConfig,
     validateProjectConfig,
+    holidayLoaders,
   } = options;
 
   const dashboard = new KousuDashboard(vscode, initialDashboardState);
@@ -158,9 +159,15 @@ export function activate(options = {}) {
         vscode.window.showWarningMessage('No project selected. Run "Kousu: Select Project" first.');
         return;
       }
+      const sources = activeProject?.config?.calendar?.holidaySources ?? [];
+      if (sources.length === 0) {
+        vscode.window.showWarningMessage('Holiday sync sources are not configured.');
+        return;
+      }
       const result = await syncHolidaysUsecase({
         project: activeProject,
         dryRun: false,
+        loaders: holidayLoaders,
         saveProjectConfig: saveProjectConfig ?? (() => Promise.resolve()),
         appendAuditLog,
       });
