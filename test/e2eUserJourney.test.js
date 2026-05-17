@@ -12,10 +12,14 @@ function createFakeVscode() {
   const providers = new Map();
   const commands = new Map();
   const postedMessages = [];
+  const notifications = { info: [], warning: [], error: [] };
+  const inputs = [];
   return {
     providers,
     commands,
     postedMessages,
+    notifications,
+    inputs,
     api: {
       commands: {
         registerCommand(commandId, handler) {
@@ -42,9 +46,19 @@ function createFakeVscode() {
             }
           };
         },
-        showInformationMessage: async () => undefined,
-        showWarningMessage: async () => undefined,
-        showErrorMessage: async () => undefined,
+        showInformationMessage: async (message) => {
+          notifications.info.push(message);
+          return undefined;
+        },
+        showWarningMessage: async (message) => {
+          notifications.warning.push(message);
+          return undefined;
+        },
+        showErrorMessage: async (message) => {
+          notifications.error.push(message);
+          return undefined;
+        },
+        showInputBox: async () => inputs.shift(),
       }
     }
   };
@@ -133,4 +147,45 @@ test('E2E: 競合設定検知時に詳細表示用データを取得できる', 
   assert.equal(loaded.conflicts[0].projectId, 'alpha');
   assert.ok(loaded.conflicts[0].selectedFile.endsWith('alpha.local.json'));
   assert.ok(loaded.conflicts[0].ignoredFiles.some((file) => file.endsWith('alpha.json')));
+});
+
+test('E2E: TASK-27主要フロー(初期化/表示/実績更新/祝日同期/停止)が連続実行できる', async () => {
+  const fake = createFakeVscode();
+  const savedConfigs = [];
+  const extension = activate({
+    vscode: fake.api,
+    saveProjectConfig: async (config) => {
+      savedConfigs.push(config);
+    },
+  });
+
+  fake.inputs.push('100', '2026-06-30', '20', 'Task 27 Project');
+  await fake.commands.get('kousu.initializeProject')();
+  assert.equal(savedConfigs.length, 1);
+  assert.equal(savedConfigs[0].projectId, 'task-27-project');
+
+  await fake.commands.get('kousu.openDashboard')();
+  assert.ok(fake.postedMessages.some((message) => message.type === 'dashboard:init'));
+
+  extension.setProjects(
+    [{ config: savedConfigs[0] }],
+    { config: savedConfigs[0] },
+    {
+      elapsedWorkingDays: 5,
+      totalWorkingDays: 20,
+      remainingWorkingDays: ['2026-05-26', '2026-05-27'],
+      today: '2026-05-25',
+    }
+  );
+  fake.inputs.push('30');
+  await fake.commands.get('kousu.updateActual')();
+  const dashboardUpdate = fake.postedMessages.findLast((message) => message.type === 'dashboard:update');
+  assert.equal(dashboardUpdate.payload.project.config.effort.actual, 30);
+
+  await fake.commands.get('kousu.syncHolidays')();
+  assert.ok(fake.notifications.info.includes('Holiday sync completed'));
+  assert.ok(savedConfigs.length >= 3);
+  assert.ok(Array.isArray(savedConfigs.at(-1).calendar.holidays));
+
+  assert.doesNotThrow(() => extension.close());
 });
