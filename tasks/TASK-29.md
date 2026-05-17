@@ -44,7 +44,7 @@ const result = await syncHolidays({ sources, currentHolidays, loaders });
 
 ## 確認チェック
 
-- [ ] `syncHolidaysUsecase` が `loaders` パラメータを受け取り `syncHolidays` に渡す
-- [ ] `vscodeMain.js` に `api` / `file` 型の実ローダーが実装されている
-- [ ] `holidaySources` が空のとき「ソース未設定」の通知が出る
-- [ ] 既存テストがすべて通過する
+- [x] `syncHolidaysUsecase` が `loaders` パラメータを受け取り `syncHolidays` に渡す
+- [x] `vscodeMain.js` に `api` / `file` 型の実ローダーが実装されている
+- [x] `holidaySources` が空のとき「ソース未設定」の通知が出る
+- [x] 既存テストがすべて通過する

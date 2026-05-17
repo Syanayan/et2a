@@ -23,6 +23,6 @@
 
 ## 確認チェック
 
-- [ ] `getChildren()` の各要素に `collapsibleState: 0` が含まれる
+- [x] `getChildren()` の各要素に `collapsibleState: 0` が含まれる
 - [ ] 実機でサイドバーアイテムが4件表示される
-- [ ] 既存テストがすべて通過する
+- [x] 既存テストがすべて通過する
