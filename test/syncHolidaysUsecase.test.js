@@ -77,3 +77,38 @@ test('apply mode persists synced holidays into project config', async () => {
   assert.deepEqual(result.project.config.calendar.holidays, ['2026-03-11', '2026-03-12']);
   assert.equal(result.notification.message, 'Holiday sync completed');
 });
+
+test('passes loaders to syncHolidays service', async () => {
+  let receivedLoaders = null;
+  const loaders = {
+    api: async () => ['2026-01-01'],
+  };
+
+  const project = {
+    config: {
+      projectId: 'alpha',
+      calendar: {
+        holidaySources: [{ kind: 'company', type: 'api', endpoint: 'https://example.com' }],
+        holidays: [],
+      },
+    },
+  };
+
+  await syncHolidaysUsecase({
+    project,
+    dryRun: true,
+    loaders,
+    syncHolidays: async ({ loaders: incomingLoaders }) => {
+      receivedLoaders = incomingLoaders;
+      return {
+        success: true,
+        fallbackUsed: false,
+        holidays: ['2026-01-01'],
+        warningState: null,
+        errors: [],
+      };
+    },
+  });
+
+  assert.equal(receivedLoaders, loaders);
+});

@@ -6,6 +6,7 @@ import { calculateWorkingDays } from './domain/workingDayCalculator.js';
 import { appendAuditLog } from './infrastructure/auditLogger.js';
 import { validateProjectConfig } from './infrastructure/configValidator.js';
 import { writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const require = createRequire(import.meta.url);
@@ -13,6 +14,37 @@ const vscode = require('vscode');
 
 async function saveProjectConfig(config, filePath) {
   await writeFile(filePath, JSON.stringify(config, null, 2), 'utf8');
+}
+
+function createHolidayLoaders(workspaceRoot) {
+  return {
+    api: async (source) => {
+      const response = await fetch(source.endpoint);
+      if (!response.ok) {
+        throw new Error(`holiday_api_error:${response.status}`);
+      }
+      const data = await response.json();
+      return Array.isArray(data) ? data : data?.holidays ?? [];
+    },
+    file: async (source) => {
+      const targetPath = path.isAbsolute(source.path)
+        ? source.path
+        : path.join(workspaceRoot, source.path);
+      const body = await readFile(targetPath, 'utf8');
+      const data = JSON.parse(body);
+      return Array.isArray(data) ? data : data?.holidays ?? [];
+    },
+    csv: async (source) => {
+      const targetPath = path.isAbsolute(source.path)
+        ? source.path
+        : path.join(workspaceRoot, source.path);
+      const body = await readFile(targetPath, 'utf8');
+      return body
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => /^\d{4}-\d{2}-\d{2}$/.test(line));
+    },
+  };
 }
 
 export async function activate(context) {
@@ -33,6 +65,7 @@ export async function activate(context) {
       return saveProjectConfig(config, filePath);
     },
     validateProjectConfig,
+    holidayLoaders: createHolidayLoaders(workspaceRoot),
     workingDayContext: { today, elapsedWorkingDays: 0, totalWorkingDays: 0, remainingWorkingDays: 0 },
   });
 
