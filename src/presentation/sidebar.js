@@ -28,10 +28,10 @@ export class KousuSidebarProvider {
 
   getChildren() {
     return [
-      { label: `Project: ${this.state.projectName}` },
-      { label: `Progress: ${this.state.progressPercent}%` },
-      { label: `Remaining: ${this.state.remainingPersonDays} person_day` },
-      { label: `Alert: ${this.state.alertLabel}` }
+      { label: `Project: ${this.state.projectName}`, collapsibleState: 0 },
+      { label: `Progress: ${this.state.progressPercent}%`, collapsibleState: 0 },
+      { label: `Remaining: ${this.state.remainingPersonDays} person_day`, collapsibleState: 0 },
+      { label: `Alert: ${this.state.alertLabel}`, collapsibleState: 0 }
     ];
   }
 }
