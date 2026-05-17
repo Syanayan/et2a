@@ -50,7 +50,12 @@ export async function activate(context) {
       const elapsed = workingDays.filter((d) => d <= today).length;
       const remaining = workingDays.filter((d) => d > today).length;
 
-      result.setProjects(projects, initialProject);
+      result.setProjects(projects, initialProject, {
+        today,
+        elapsedWorkingDays: elapsed,
+        totalWorkingDays: workingDays.length,
+        remainingWorkingDays: workingDays.filter((d) => d > today),
+      });
     }
   }
 

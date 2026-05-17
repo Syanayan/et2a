@@ -254,3 +254,41 @@ test('routes notifications by level and debounces duplicates within 30 seconds',
 
   assert.deepEqual(fake.notifications[3], { level: 'warn', message: '同期失敗' });
 });
+
+test('setProjects updates workingDayContext used by updateActual', async () => {
+  const fake = createFakeVscode();
+  const answers = ['4'];
+  fake.api.window.showInputBox = async () => answers.shift();
+
+  const project = {
+    config: {
+      projectId: 'alpha',
+      schedule: { startDate: '2026-05-01', endDate: '2099-12-31' },
+      effort: { total: 10, buffer: 0, actual: 0, budgetMode: 'inclusive' },
+      members: [],
+      calendar: { holidays: [], holidaySources: [] },
+    },
+  };
+
+  const activated = activate({
+    vscode: fake.api,
+    saveProjectConfig: async () => {},
+    workingDayContext: { today: '2026-05-10', elapsedWorkingDays: 0, totalWorkingDays: 0, remainingWorkingDays: [] },
+  });
+  activated.setProjects([project], project, {
+    today: '2026-05-10',
+    elapsedWorkingDays: 2,
+    totalWorkingDays: 8,
+    remainingWorkingDays: ['2026-05-11', '2026-05-12', '2026-05-13'],
+  });
+
+  const updateActual = fake.commands.find((x) => x.commandId === 'kousu.updateActual');
+  await updateActual.handler();
+
+  const openDashboard = fake.commands.find((x) => x.commandId === 'kousu.openDashboard');
+  openDashboard.handler();
+  const panel = fake.webviewPanels[0];
+  const updateMessage = panel.postedMessages.find((m) => m.type === 'dashboard:update');
+  assert.equal(updateMessage.payload.forecast.status, 'ok');
+  assert.equal(updateMessage.payload.forecast.predictedTotalEffort, 16);
+});
