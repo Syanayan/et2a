@@ -185,6 +185,7 @@ export function activate(options = {}) {
       if (initialActiveProject) {
         activeProject = initialActiveProject;
         refreshSidebar(activeProject, null, null);
+        dashboard.update({ project: activeProject });
       }
     },
     updateDashboard: (state) => dashboard.update(state),
