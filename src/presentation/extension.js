@@ -192,6 +192,7 @@ export function activate(options = {}) {
     notify: (notification) => notifier.notify(notification),
     close: () => {
       dashboard.close();
+      if (provider) provider._listeners = [];
       while (disposables.length > 0) {
         const disposable = disposables.pop();
         disposable?.dispose?.();
