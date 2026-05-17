@@ -22,6 +22,7 @@ export function activate(options = {}) {
   const notifier = new NotificationRouter(vscode, options.now);
   let activeProject = null;
   let provider = null;
+  const disposables = [];
   const mutableWorkingDayContext = { ...workingDayContext };
 
   function sidebarStateFromProject(project, forecast, alert) {
@@ -53,8 +54,8 @@ export function activate(options = {}) {
   if (vscode?.commands?.registerCommand && vscode?.window?.createTreeView) {
     provider = new KousuSidebarProvider(initialViewState);
 
-    vscode.commands.registerCommand('kousu.openDashboard', () => dashboard.open());
-    vscode.commands.registerCommand('kousu.initializeProject', async () => {
+    disposables.push(vscode.commands.registerCommand('kousu.openDashboard', () => dashboard.open()));
+    disposables.push(vscode.commands.registerCommand('kousu.initializeProject', async () => {
       const totalInput = await vscode.window.showInputBox({ prompt: 'Enter total effort (person-days)' });
       if (totalInput === undefined) return;
       const total = Number(totalInput);
@@ -107,9 +108,9 @@ export function activate(options = {}) {
       dashboard.open();
       dashboard.update({ project: activeProject });
       notifier.notify({ level: 'info', message: 'Project initialized.' });
-    });
+    }));
 
-    vscode.commands.registerCommand('kousu.selectProject', async () => {
+    disposables.push(vscode.commands.registerCommand('kousu.selectProject', async () => {
       const result = await initializeProject({
         projects,
         isInteractive: true,
@@ -119,9 +120,9 @@ export function activate(options = {}) {
         activeProject = result.project;
         refreshSidebar(activeProject, null, null);
       }
-    });
+    }));
 
-    vscode.commands.registerCommand('kousu.updateActual', async () => {
+    disposables.push(vscode.commands.registerCommand('kousu.updateActual', async () => {
       if (!activeProject) {
         vscode.window.showWarningMessage('No project selected. Run "Kousu: Select Project" first.');
         return;
@@ -150,9 +151,9 @@ export function activate(options = {}) {
         refreshSidebar(activeProject, result.forecast, result.alert);
         dashboard.update({ project: activeProject, forecast: result.forecast, alert: result.alert });
       }
-    });
+    }));
 
-    vscode.commands.registerCommand('kousu.syncHolidays', async () => {
+    disposables.push(vscode.commands.registerCommand('kousu.syncHolidays', async () => {
       if (!activeProject) {
         vscode.window.showWarningMessage('No project selected. Run "Kousu: Select Project" first.');
         return;
@@ -168,9 +169,9 @@ export function activate(options = {}) {
         activeProject = result.project;
         dashboard.update(result.dashboardState);
       }
-    });
+    }));
 
-    vscode.window.createTreeView('kousu.sidebar', { treeDataProvider: provider });
+    disposables.push(vscode.window.createTreeView('kousu.sidebar', { treeDataProvider: provider }));
   }
 
   return {
@@ -189,6 +190,15 @@ export function activate(options = {}) {
     updateDashboard: (state) => dashboard.update(state),
     notifyDashboardError: (message) => dashboard.error(message),
     notify: (notification) => notifier.notify(notification),
+    close: () => {
+      dashboard.close();
+      while (disposables.length > 0) {
+        const disposable = disposables.pop();
+        disposable?.dispose?.();
+      }
+      provider = null;
+      activeProject = null;
+    },
   };
 }
 
