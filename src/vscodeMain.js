@@ -5,7 +5,7 @@ import { initializeProject } from './application/usecases/initializeProject.js';
 import { calculateWorkingDays } from './domain/workingDayCalculator.js';
 import { appendAuditLog } from './infrastructure/auditLogger.js';
 import { validateProjectConfig } from './infrastructure/configValidator.js';
-import { writeFile } from 'node:fs/promises';
+import { writeFile, mkdir } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -47,13 +47,30 @@ function createHolidayLoaders(workspaceRoot) {
   };
 }
 
+async function reloadAndSetProjects(workspaceRoot, result, today) {
+  const { projects: newProjects } = await loadProjectConfigs(workspaceRoot)
+    .catch(() => ({ projects: [] }));
+  if (newProjects.length === 0) return;
+  const { project: active } = await initializeProject({ projects: newProjects, isInteractive: false });
+  if (!active) return;
+  const startDate = active.config?.schedule?.startDate ?? today;
+  const endDate = active.config?.schedule?.endDate ?? today;
+  const holidays = active.config?.calendar?.holidays ?? [];
+  const { workingDays } = calculateWorkingDays(startDate, endDate, { companyHolidays: holidays, personalHolidays: [] });
+  result.setProjects(newProjects, active, {
+    today,
+    elapsedWorkingDays: workingDays.filter((d) => d <= today).length,
+    totalWorkingDays: workingDays.length,
+    remainingWorkingDays: workingDays.filter((d) => d > today),
+  });
+}
+
 export async function activate(context) {
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? context.extensionPath;
   const logPath = path.join(workspaceRoot, 'kousu.audit.log');
+  const today = new Date().toISOString().slice(0, 10);
 
   const { projects, conflicts } = await loadProjectConfigs(workspaceRoot).catch(() => ({ projects: [], conflicts: [] }));
-
-  const today = new Date().toISOString().slice(0, 10);
 
   const result = _activate({
     vscode,
@@ -70,34 +87,37 @@ export async function activate(context) {
       path.isAbsolute(filePath) ? filePath : path.join(workspaceRoot, filePath),
       'utf8'
     ),
-    workingDayContext: { today, elapsedWorkingDays: 0, totalWorkingDays: 0, remainingWorkingDays: 0 },
+    workingDayContext: { today, elapsedWorkingDays: 0, totalWorkingDays: 0, remainingWorkingDays: [] },
+    createProjectConfig: async (config) => {
+      const projectsDir = path.join(workspaceRoot, 'kousu.projects');
+      await mkdir(projectsDir, { recursive: true });
+      const filePath = path.join(projectsDir, `${config.projectId}.json`);
+      await saveProjectConfig(config, filePath);
+      const { projects: newProjects } = await loadProjectConfigs(workspaceRoot)
+        .catch(() => ({ projects: [] }));
+      const activeProject = newProjects.find((p) => p.config?.projectId === config.projectId) ?? { config };
+      return { projects: newProjects, activeProject };
+    },
   });
 
   if (projects.length > 0) {
-    const { project: initialProject } = await initializeProject({
-      projects,
-      isInteractive: false,
-    });
-
-    if (initialProject) {
-      const startDate = initialProject.config?.schedule?.startDate ?? today;
-      const endDate = initialProject.config?.schedule?.endDate ?? today;
-      const holidays = initialProject.config?.calendar?.holidays ?? [];
-      const { workingDays } = calculateWorkingDays(startDate, endDate, { companyHolidays: holidays, personalHolidays: [] });
-      const elapsed = workingDays.filter((d) => d <= today).length;
-      const remaining = workingDays.filter((d) => d > today).length;
-
-      result.setProjects(projects, initialProject, {
-        today,
-        elapsedWorkingDays: elapsed,
-        totalWorkingDays: workingDays.length,
-        remainingWorkingDays: workingDays.filter((d) => d > today),
-      });
-    }
+    await reloadAndSetProjects(workspaceRoot, result, today);
   }
 
   if (conflicts.length > 0) {
     vscode.window.showWarningMessage(`Kousu: ${conflicts.length} project config conflict(s) detected. Check kousu.audit.log for details.`);
+  }
+
+  // B: ファイル監視 — kousu.projects/ と kousu.config.json の変更を自動検知
+  const watcher = vscode.workspace.createFileSystemWatcher?.(
+    new (vscode.RelativePattern ?? Object)(workspaceRoot, '{kousu.config.json,kousu.projects/**/*.json}')
+  );
+  if (watcher) {
+    const onConfigChange = () => reloadAndSetProjects(workspaceRoot, result, today);
+    watcher.onDidChange(onConfigChange);
+    watcher.onDidCreate(onConfigChange);
+    watcher.onDidDelete(onConfigChange);
+    context.subscriptions.push(watcher);
   }
 
   context.subscriptions.push({ dispose: () => result.close?.() });

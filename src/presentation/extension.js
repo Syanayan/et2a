@@ -20,6 +20,7 @@ export function activate(options = {}) {
     validateProjectConfig,
     holidayLoaders,
     readFile,
+    createProjectConfig,
   } = options;
 
   const dashboard = new KousuDashboard(vscode, initialDashboardState);
@@ -110,6 +111,63 @@ export function activate(options = {}) {
       dashboard.open();
       dashboard.update({ project: activeProject });
       notifier.notify({ level: 'info', message: 'Project initialized.' });
+    }));
+
+    disposables.push(vscode.commands.registerCommand('kousu.newProject', async () => {
+      const projectName = await vscode.window.showInputBox({ prompt: 'Project name' });
+      if (!projectName?.trim()) return;
+      const totalInput = await vscode.window.showInputBox({ prompt: 'Total effort (person-days)' });
+      if (totalInput === undefined) return;
+      const total = Number(totalInput);
+      if (!Number.isFinite(total) || total <= 0) {
+        vscode.window.showErrorMessage('Total effort must be a positive number.');
+        return;
+      }
+      const endDate = await vscode.window.showInputBox({ prompt: 'End date (YYYY-MM-DD)' });
+      if (endDate === undefined) return;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate) || Number.isNaN(Date.parse(endDate))) {
+        vscode.window.showErrorMessage('End date must be in YYYY-MM-DD format.');
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const projectId = projectName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
+      const config = {
+        schemaVersion: '1.0.0',
+        projectId,
+        schedule: { startDate: today, endDate },
+        effort: { total, buffer: 0, actual: 0, budgetMode: 'inclusive' },
+        members: [],
+        calendar: { holidays: [], holidaySources: [] },
+      };
+      const result = await (createProjectConfig ?? (() => Promise.resolve({ projects: [{ config }], activeProject: { config } })))(config);
+      projects.length = 0;
+      projects.push(...(result.projects ?? []));
+      activeProject = result.activeProject ?? { config };
+      refreshSidebar(activeProject, null, null);
+      dashboard.update({ project: activeProject });
+      notifier.notify({ level: 'info', message: `Project "${projectId}" created.` });
+    }));
+
+    disposables.push(vscode.commands.registerCommand('kousu.setTimesheetSource', async () => {
+      if (!activeProject) {
+        vscode.window.showWarningMessage('No project selected. Run "Kousu: Select Project" first.');
+        return;
+      }
+      const uris = await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        filters: { Timesheet: ['csv', 'json'] },
+        openLabel: 'Select Timesheet File',
+      });
+      if (!uris || uris.length === 0) return;
+      const filePath = uris[0].fsPath;
+      const type = filePath.endsWith('.json') ? 'json' : 'csv';
+      const nextConfig = {
+        ...activeProject.config,
+        timesheetSource: { type, path: filePath },
+      };
+      await (saveProjectConfig ?? (() => Promise.resolve()))(nextConfig);
+      activeProject = { ...activeProject, config: nextConfig };
+      notifier.notify({ level: 'info', message: `Timesheet source set.` });
     }));
 
     disposables.push(vscode.commands.registerCommand('kousu.selectProjectById', (projectId) => {
