@@ -66,6 +66,10 @@ export async function activate(context) {
     },
     validateProjectConfig,
     holidayLoaders: createHolidayLoaders(workspaceRoot),
+    readFile: (filePath) => readFile(
+      path.isAbsolute(filePath) ? filePath : path.join(workspaceRoot, filePath),
+      'utf8'
+    ),
     workingDayContext: { today, elapsedWorkingDays: 0, totalWorkingDays: 0, remainingWorkingDays: 0 },
   });
 

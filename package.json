@@ -19,7 +19,8 @@
       { "command": "kousu.selectProject", "title": "Select Project", "category": "Kousu" },
       { "command": "kousu.updateActual",  "title": "Update Actual Effort", "category": "Kousu" },
       { "command": "kousu.openDashboard", "title": "Open Dashboard", "category": "Kousu" },
-      { "command": "kousu.syncHolidays", "title": "Sync Holidays", "category": "Kousu" }
+      { "command": "kousu.syncHolidays", "title": "Sync Holidays", "category": "Kousu" },
+      { "command": "kousu.syncTimesheet", "title": "Sync Timesheet", "category": "Kousu" }
     ],
     "viewsContainers": {
       "activitybar": [

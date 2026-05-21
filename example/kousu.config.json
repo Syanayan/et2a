@@ -1,14 +1,14 @@
 {
   "schemaVersion": "1.0.0",
-  "projectId": "sample-project",
+  "projectId": "my-project",
   "schedule": {
     "startDate": "2026-04-01",
     "endDate": "2026-06-30"
   },
   "effort": {
-    "total": 60,
-    "buffer": 5,
-    "actual": 8,
+    "total": 200,
+    "buffer": 20,
+    "actual": 145,
     "budgetMode": "inclusive"
   },
   "members": [
@@ -18,11 +18,19 @@
     },
     {
       "name": "Bob",
-      "dailyEffort": 0.5
+      "dailyEffort": 1
+    },
+    {
+      "name": "Carol",
+      "dailyEffort": 1
     }
   ],
   "calendar": {
     "holidays": [],
     "holidaySources": []
+  },
+  "timesheetSource": {
+    "type": "json",
+    "path": "timesheet.json"
   }
 }
