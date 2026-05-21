@@ -26,6 +26,7 @@ function createFakeVscode() {
       },
       window: {
         showInputBox: async () => undefined,
+        showOpenDialog: async () => undefined,
         showInformationMessage(message) {
           notifications.push({ level: 'info', message });
           return Promise.resolve(undefined);
@@ -91,9 +92,11 @@ test('registers required commands and sidebar TreeView nodes', async () => {
     fake.commands.map((x) => x.commandId).sort(),
     [
       'kousu.initializeProject',
+      'kousu.newProject',
       'kousu.openDashboard',
       'kousu.selectProject',
       'kousu.selectProjectById',
+      'kousu.setTimesheetSource',
       'kousu.syncHolidays',
       'kousu.syncTimesheet',
       'kousu.updateActual'
@@ -571,6 +574,140 @@ test('TASK-34: syncTimesheet passes monthlyBreakdown to dashboard update', async
   const updateMsg = panel.postedMessages.find((m) => m.type === 'dashboard:update' && m.payload?.monthlyBreakdown);
   assert.ok(updateMsg, 'expected a dashboard:update with monthlyBreakdown');
   assert.deepEqual(updateMsg.payload.monthlyBreakdown.members, ['Alice', 'Bob']);
+});
+
+test('newProject creates project config with correct fields', async () => {
+  const fake = createFakeVscode();
+  const answers = ['My Project', '80', '2026-12-31'];
+  fake.api.window.showInputBox = async () => answers.shift();
+  const created = [];
+
+  activate({
+    vscode: fake.api,
+    createProjectConfig: async (config) => {
+      created.push(config);
+      return { projects: [{ config }], activeProject: { config } };
+    },
+  });
+
+  await fake.commands.find((x) => x.commandId === 'kousu.newProject').handler();
+
+  assert.equal(created.length, 1);
+  assert.equal(created[0].projectId, 'my-project');
+  assert.equal(created[0].effort.total, 80);
+  assert.equal(created[0].schedule.endDate, '2026-12-31');
+  assert.equal(created[0].schemaVersion, '1.0.0');
+});
+
+test('newProject shows error and does not create for invalid total effort', async () => {
+  const fake = createFakeVscode();
+  const answers = ['My Project', 'abc'];
+  fake.api.window.showInputBox = async () => answers.shift();
+  const created = [];
+
+  activate({
+    vscode: fake.api,
+    createProjectConfig: async (config) => { created.push(config); return { projects: [], activeProject: null }; },
+  });
+
+  await fake.commands.find((x) => x.commandId === 'kousu.newProject').handler();
+
+  assert.equal(created.length, 0);
+  assert.ok(fake.notifications.some((n) => n.level === 'error'));
+});
+
+test('newProject updates sidebar after creation', async () => {
+  const fake = createFakeVscode();
+  const answers = ['Beta', '50', '2026-09-30'];
+  fake.api.window.showInputBox = async () => answers.shift();
+  const newConfig = {
+    schemaVersion: '1.0.0', projectId: 'beta',
+    schedule: { startDate: '2026-05-21', endDate: '2026-09-30' },
+    effort: { total: 50, buffer: 0, actual: 0, budgetMode: 'inclusive' },
+    members: [], calendar: { holidays: [], holidaySources: [] },
+  };
+
+  activate({
+    vscode: fake.api,
+    createProjectConfig: async () => ({
+      projects: [{ config: newConfig }],
+      activeProject: { config: newConfig },
+    }),
+  });
+
+  await fake.commands.find((x) => x.commandId === 'kousu.newProject').handler();
+
+  const provider = fake.providers.get('kousu.sidebar');
+  const items = await provider.getChildren();
+  assert.ok(items.some((i) => i.label.includes('beta')));
+});
+
+test('setTimesheetSource saves timesheetSource path to active project', async () => {
+  const fake = createFakeVscode();
+  fake.api.window.showOpenDialog = async () => [{ fsPath: '/data/timesheet.csv' }];
+  const saved = [];
+  const project = {
+    config: {
+      projectId: 'alpha', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 100, buffer: 10, actual: 0, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+    },
+  };
+
+  const activated = activate({
+    vscode: fake.api,
+    saveProjectConfig: async (config) => { saved.push(config); },
+  });
+  activated.setProjects([project], project);
+
+  await fake.commands.find((x) => x.commandId === 'kousu.setTimesheetSource').handler();
+
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].timesheetSource.type, 'csv');
+  assert.equal(saved[0].timesheetSource.path, '/data/timesheet.csv');
+});
+
+test('setTimesheetSource detects json type from file extension', async () => {
+  const fake = createFakeVscode();
+  fake.api.window.showOpenDialog = async () => [{ fsPath: '/data/timesheet.json' }];
+  const saved = [];
+  const project = {
+    config: {
+      projectId: 'alpha', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 100, buffer: 10, actual: 0, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+    },
+  };
+
+  const activated = activate({ vscode: fake.api, saveProjectConfig: async (c) => saved.push(c) });
+  activated.setProjects([project], project);
+
+  await fake.commands.find((x) => x.commandId === 'kousu.setTimesheetSource').handler();
+
+  assert.equal(saved[0].timesheetSource.type, 'json');
+});
+
+test('setTimesheetSource does nothing when dialog is cancelled', async () => {
+  const fake = createFakeVscode();
+  fake.api.window.showOpenDialog = async () => undefined;
+  const saved = [];
+  const project = {
+    config: {
+      projectId: 'alpha', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 100, buffer: 10, actual: 0, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+    },
+  };
+
+  const activated = activate({ vscode: fake.api, saveProjectConfig: async (c) => saved.push(c) });
+  activated.setProjects([project], project);
+
+  await fake.commands.find((x) => x.commandId === 'kousu.setTimesheetSource').handler();
+
+  assert.equal(saved.length, 0);
 });
 
 test('close disposes registered resources including dashboard panel', async () => {
