@@ -5,6 +5,8 @@ import { NotificationRouter } from './notifier.js';
 import { initializeProject } from '../application/usecases/initializeProject.js';
 import { updateActualEffort } from '../application/usecases/updateActualEffort.js';
 import { syncHolidaysUsecase } from '../application/usecases/syncHolidays.js';
+import { computeWeeklyEffort, computeBurndown } from '../application/computeDashboardCharts.js';
+import { syncTimesheetUsecase } from '../application/usecases/syncTimesheet.js';
 
 export function activate(options = {}) {
   const {
@@ -17,6 +19,7 @@ export function activate(options = {}) {
     saveProjectConfig,
     validateProjectConfig,
     holidayLoaders,
+    readFile,
   } = options;
 
   const dashboard = new KousuDashboard(vscode, initialDashboardState);
@@ -25,29 +28,27 @@ export function activate(options = {}) {
   let provider = null;
   const disposables = [];
   const mutableWorkingDayContext = { ...workingDayContext };
+  const effortHistory = [];
 
-  function sidebarStateFromProject(project, forecast, alert) {
-    if (!project) {
-      return {};
-    }
-    const cfg = project.config;
-    const progressPercent = forecast?.progressPercent
-      ?? (cfg.effort?.actual != null && cfg.effort?.total
-        ? Math.round((cfg.effort.actual / cfg.effort.total) * 100)
-        : 0);
-    return {
-      projectName: cfg.projectId ?? '-',
-      progressPercent,
-      remainingPersonDays: forecast?.remainingEffort ?? 0,
-      alertLabel: alert?.level ?? '正常',
-    };
-  }
-
-  function refreshSidebar(project, forecast, alert) {
+  function refreshSidebar(activeProj, forecast, alert) {
     if (!provider) return;
+    const activeId = activeProj?.config?.projectId ?? null;
     provider.state = {
-      ...provider.state,
-      ...sidebarStateFromProject(project, forecast, alert),
+      projects: projects.map((p) => {
+        const isActive = p.config?.projectId === activeId;
+        const cfg = p.config;
+        const progressPercent = isActive && forecast?.progressPercent != null
+          ? forecast.progressPercent
+          : (cfg.effort?.actual != null && cfg.effort?.total
+            ? Math.round((cfg.effort.actual / cfg.effort.total) * 100)
+            : 0);
+        return {
+          projectId: cfg.projectId ?? '-',
+          progressPercent,
+          alertLabel: isActive ? (alert?.level ?? '正常') : '正常',
+        };
+      }),
+      activeProjectId: activeId,
     };
     provider._onDidChangeTreeData?.fire();
   }
@@ -111,6 +112,14 @@ export function activate(options = {}) {
       notifier.notify({ level: 'info', message: 'Project initialized.' });
     }));
 
+    disposables.push(vscode.commands.registerCommand('kousu.selectProjectById', (projectId) => {
+      const found = projects.find((p) => p.config?.projectId === projectId);
+      if (!found) return;
+      activeProject = found;
+      refreshSidebar(activeProject, null, null);
+      dashboard.update({ project: activeProject });
+    }));
+
     disposables.push(vscode.commands.registerCommand('kousu.selectProject', async () => {
       const result = await initializeProject({
         projects,
@@ -149,8 +158,22 @@ export function activate(options = {}) {
       notifier.notify(result.notification);
       if (result.ok) {
         activeProject = result.project;
+        const today = mutableWorkingDayContext.today ?? new Date().toISOString().slice(0, 10);
+        const existing = effortHistory.findIndex((e) => e.date === today);
+        if (existing >= 0) {
+          effortHistory[existing] = { date: today, actual: Number(input) };
+        } else {
+          effortHistory.push({ date: today, actual: Number(input) });
+        }
+        const burndown = computeBurndown(effortHistory, activeProject);
+        const weeklyEffort = computeWeeklyEffort(
+          effortHistory,
+          activeProject,
+          today,
+          mutableWorkingDayContext.totalWorkingDays ?? 0,
+        );
         refreshSidebar(activeProject, result.forecast, result.alert);
-        dashboard.update({ project: activeProject, forecast: result.forecast, alert: result.alert });
+        dashboard.update({ project: activeProject, forecast: result.forecast, alert: result.alert, burndown, weeklyEffort });
       }
     }));
 
@@ -175,6 +198,42 @@ export function activate(options = {}) {
       if (result.ok) {
         activeProject = result.project;
         dashboard.update(result.dashboardState);
+      }
+    }));
+
+    disposables.push(vscode.commands.registerCommand('kousu.syncTimesheet', async () => {
+      if (!activeProject) {
+        vscode.window.showWarningMessage('No project selected. Run "Kousu: Select Project" first.');
+        return;
+      }
+      const source = activeProject?.config?.timesheetSource;
+      const result = await syncTimesheetUsecase({
+        project: activeProject,
+        sourceType: source?.type ?? (source ? 'csv' : null),
+        sourcePath: source?.path,
+        readFile: readFile ?? (() => Promise.resolve('')),
+        saveProjectConfig: saveProjectConfig ?? (() => Promise.resolve()),
+      });
+      notifier.notify(result.notification);
+      if (result.ok) {
+        activeProject = result.project;
+        const today = mutableWorkingDayContext.today ?? new Date().toISOString().slice(0, 10);
+        const existing = effortHistory.findIndex((e) => e.date === today);
+        const actual = result.project.config.effort.actual;
+        if (existing >= 0) {
+          effortHistory[existing] = { date: today, actual };
+        } else {
+          effortHistory.push({ date: today, actual });
+        }
+        const burndown = computeBurndown(effortHistory, activeProject);
+        const weeklyEffort = computeWeeklyEffort(
+          effortHistory,
+          activeProject,
+          today,
+          mutableWorkingDayContext.totalWorkingDays ?? 0,
+        );
+        refreshSidebar(activeProject, null, null);
+        dashboard.update({ project: activeProject, burndown, weeklyEffort, monthlyBreakdown: result.monthlyBreakdown ?? null });
       }
     }));
 

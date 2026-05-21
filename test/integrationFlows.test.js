@@ -96,24 +96,23 @@ test('integration: config load -> recalc -> TreeView rendering', async () => {
     saveProjectConfig: async () => {},
   });
 
+  const projectId = updated.project.config.projectId;
+  const progressPercent = Math.round((updated.project.config.effort.actual / updated.project.config.effort.total) * 100);
   const viewState = {
-    projectName: updated.project.config.projectId,
-    progressPercent: Math.round((updated.project.config.effort.actual / updated.project.config.effort.total) * 100),
-    remainingPersonDays: updated.forecast.remainingEffort,
-    alertLabel: updated.alert.level,
+    projects: [{ projectId, progressPercent, alertLabel: updated.alert.level }],
+    activeProjectId: projectId,
   };
 
   const fake = createFakeVscode();
   activate({ vscode: fake.api, initialViewState: viewState });
   const provider = fake.providers.get('kousu.sidebar');
-  const labels = (await provider.getChildren()).map((x) => x.label);
+  const items = await provider.getChildren();
 
-  assert.deepEqual(labels, [
-    'Project: alpha',
-    'Progress: 50%',
-    'Remaining: 50 person_day',
-    'Alert: normal'
-  ]);
+  assert.equal(items.length, 1);
+  assert.ok(items[0].label.includes('▶'));
+  assert.ok(items[0].label.includes('alpha'));
+  assert.ok(items[0].description.includes('50%'));
+  assert.equal(items[0].command.command, 'kousu.selectProjectById');
 });
 
 test('integration: PATCH API -> persisted config -> audit log', async () => {

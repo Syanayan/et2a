@@ -79,14 +79,12 @@ function createFakeVscode() {
 
 test('registers required commands and sidebar TreeView nodes', async () => {
   const fake = createFakeVscode();
-  const state = {
-    projectName: 'Alpha',
-    progressPercent: 42,
-    remainingPersonDays: 5.5,
-    alertLabel: '注意'
+  const initialViewState = {
+    projects: [{ projectId: 'Alpha', progressPercent: 42, alertLabel: '注意' }],
+    activeProjectId: 'Alpha',
   };
 
-  const result = activate({ vscode: fake.api, initialViewState: state });
+  const result = activate({ vscode: fake.api, initialViewState });
 
   assert.equal(result.status, 'activated');
   assert.deepEqual(
@@ -95,7 +93,9 @@ test('registers required commands and sidebar TreeView nodes', async () => {
       'kousu.initializeProject',
       'kousu.openDashboard',
       'kousu.selectProject',
+      'kousu.selectProjectById',
       'kousu.syncHolidays',
+      'kousu.syncTimesheet',
       'kousu.updateActual'
     ]
   );
@@ -105,15 +105,11 @@ test('registers required commands and sidebar TreeView nodes', async () => {
 
   const provider = fake.providers.get('kousu.sidebar');
   const items = await provider.getChildren();
-  assert.deepEqual(
-    items.map((x) => x.label),
-    [
-      'Project: Alpha',
-      'Progress: 42%',
-      'Remaining: 5.5 person_day',
-      'Alert: 注意'
-    ]
-  );
+  assert.equal(items.length, 1);
+  assert.ok(items[0].label.includes('▶'));
+  assert.ok(items[0].label.includes('Alpha'));
+  assert.equal(items[0].command.command, 'kousu.selectProjectById');
+  assert.deepEqual(items[0].command.arguments, ['Alpha']);
 });
 
 test('initializeProject command collects inputs, saves config, and opens dashboard', async () => {
@@ -347,6 +343,236 @@ test('setProjects seeds dashboard state with initial active project', async () =
   assert.equal(panel.postedMessages[0].payload.project.config.projectId, 'alpha');
   assert.equal(panel.postedMessages[0].payload.project.config.effort.actual, 5);
 });
+test('TASK-30: dashboard HTML has header with title and report button', async () => {
+  const fake = createFakeVscode();
+  activate({ vscode: fake.api });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const { html } = fake.webviewPanels[0].webview;
+  assert.match(html, /プロジェクト全体サマリー/);
+  assert.match(html, /id="btn-report"/);
+  assert.match(html, /id="btn-settings"/);
+});
+
+test('TASK-30: dashboard HTML has 4 KPI cards with correct ids', async () => {
+  const fake = createFakeVscode();
+  activate({ vscode: fake.api });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const { html } = fake.webviewPanels[0].webview;
+  assert.match(html, /id="kpi-total"/);
+  assert.match(html, /id="kpi-actual"/);
+  assert.match(html, /id="kpi-predicted"/);
+  assert.match(html, /id="kpi-remaining"/);
+});
+
+test('TASK-30: dashboard HTML has consumption rate and budget ratio elements', async () => {
+  const fake = createFakeVscode();
+  activate({ vscode: fake.api });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const { html } = fake.webviewPanels[0].webview;
+  assert.match(html, /id="kpi-actual-rate"/);
+  assert.match(html, /id="kpi-predicted-rate"/);
+});
+
+test('TASK-30: dashboard render calculates consumption rate and budget ratio', async () => {
+  const fake = createFakeVscode();
+  const state = {
+    project: {
+      config: {
+        effort: { total: 100, buffer: 10, actual: 25, budgetMode: 'inclusive' },
+      },
+    },
+    forecast: { predictedTotalEffort: 80, remainingEffort: 75 },
+  };
+  activate({ vscode: fake.api, initialDashboardState: state });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const panel = fake.webviewPanels[0];
+  const initMsg = panel.postedMessages.find((m) => m.type === 'dashboard:init');
+  assert.equal(initMsg.payload.project.config.effort.actual, 25);
+  assert.equal(initMsg.payload.project.config.effort.total, 100);
+  assert.equal(initMsg.payload.forecast.predictedTotalEffort, 80);
+});
+
+test('TASK-31: dashboard HTML has weekly chart SVG element', async () => {
+  const fake = createFakeVscode();
+  activate({ vscode: fake.api });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const { html } = fake.webviewPanels[0].webview;
+  assert.match(html, /id="weekly-chart"/);
+  assert.match(html, /id="weekly-section"/);
+});
+
+test('TASK-31: dashboard weekly section is hidden when weeklyEffort is absent', async () => {
+  const fake = createFakeVscode();
+  activate({ vscode: fake.api });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const { html } = fake.webviewPanels[0].webview;
+  assert.match(html, /id="weekly-section"[^>]*style="display:none"/);
+});
+
+test('TASK-31: dashboard passes weeklyEffort in dashboard:init payload', async () => {
+  const fake = createFakeVscode();
+  const weeklyEffort = [
+    { day: '月', planned: 8, actual: 8 },
+    { day: '火', planned: 8, actual: 9 },
+    { day: '水', planned: 8, actual: 7 },
+    { day: '木', planned: 8, actual: 10 },
+    { day: '金', planned: 8, actual: 5 },
+  ];
+  activate({ vscode: fake.api, initialDashboardState: { weeklyEffort } });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const panel = fake.webviewPanels[0];
+  const initMsg = panel.postedMessages.find((m) => m.type === 'dashboard:init');
+  assert.deepEqual(initMsg.payload.weeklyEffort, weeklyEffort);
+});
+
+test('TASK-32: burndown actual polyline uses yellow-green stroke', async () => {
+  const fake = createFakeVscode();
+  activate({ vscode: fake.api });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const { html } = fake.webviewPanels[0].webview;
+  assert.match(html, /'#c8e06b'/);
+});
+
+test('TASK-32: burndown predicted polyline uses grey stroke', async () => {
+  const fake = createFakeVscode();
+  activate({ vscode: fake.api });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const { html } = fake.webviewPanels[0].webview;
+  assert.match(html, /'#888'/);
+});
+
+test('TASK-32: burndown chart draws circle markers for actual data points', async () => {
+  const fake = createFakeVscode();
+  activate({ vscode: fake.api });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const { html } = fake.webviewPanels[0].webview;
+  assert.match(html, /createElementNS\('http:\/\/www\.w3\.org\/2000\/svg', 'circle'\)/);
+});
+
+test('TASK-32: burndown chart draws grid lines and axis labels', async () => {
+  const fake = createFakeVscode();
+  activate({ vscode: fake.api });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const { html } = fake.webviewPanels[0].webview;
+  assert.match(html, /setAttribute\('class', 'grid'\)/);
+  assert.match(html, /setAttribute\('class', 'x-label'\)/);
+});
+
+test('TASK-35: sidebar shows all projects with active marker after setProjects', async () => {
+  const fake = createFakeVscode();
+  const projectAlpha = {
+    config: {
+      projectId: 'alpha', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 100, buffer: 10, actual: 40, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+    },
+  };
+  const projectBeta = {
+    config: {
+      projectId: 'beta', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 50, buffer: 5, actual: 5, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+    },
+  };
+
+  const activated = activate({ vscode: fake.api });
+  activated.setProjects([projectAlpha, projectBeta], projectAlpha);
+
+  const provider = fake.providers.get('kousu.sidebar');
+  const items = await provider.getChildren();
+
+  assert.equal(items.length, 2);
+  assert.ok(items[0].label.includes('▶'), 'alpha should be marked active');
+  assert.ok(items[0].label.includes('alpha'));
+  assert.ok(!items[1].label.includes('▶'), 'beta should not be marked active');
+  assert.ok(items[1].label.includes('beta'));
+});
+
+test('TASK-35: selectProjectById switches active project in sidebar and dashboard', async () => {
+  const fake = createFakeVscode();
+  const projectAlpha = {
+    config: {
+      projectId: 'alpha', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 100, buffer: 10, actual: 40, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+    },
+  };
+  const projectBeta = {
+    config: {
+      projectId: 'beta', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 50, buffer: 5, actual: 5, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+    },
+  };
+
+  const activated = activate({ vscode: fake.api });
+  activated.setProjects([projectAlpha, projectBeta], projectAlpha);
+
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  await fake.commands.find((x) => x.commandId === 'kousu.selectProjectById').handler('beta');
+
+  const panel = fake.webviewPanels[0];
+  const updateMsg = panel.postedMessages.find(
+    (m) => m.type === 'dashboard:update' && m.payload?.project?.config?.projectId === 'beta'
+  );
+  assert.ok(updateMsg, 'dashboard:update with beta project expected');
+
+  const provider = fake.providers.get('kousu.sidebar');
+  const items = await provider.getChildren();
+  assert.ok(!items[0].label.includes('▶'), 'alpha should no longer be active');
+  assert.ok(items[1].label.includes('▶'), 'beta should now be active');
+});
+
+test('TASK-34: dashboard HTML has monthly table section with correct id', async () => {
+  const fake = createFakeVscode();
+  activate({ vscode: fake.api });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const { html } = fake.webviewPanels[0].webview;
+  assert.match(html, /id="monthly-table"/);
+});
+
+test('TASK-34: monthly table is hidden by default', async () => {
+  const fake = createFakeVscode();
+  activate({ vscode: fake.api });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const { html } = fake.webviewPanels[0].webview;
+  assert.match(html, /id="monthly-table"[^>]*style="display:none"/);
+});
+
+test('TASK-34: syncTimesheet passes monthlyBreakdown to dashboard update', async () => {
+  const fake = createFakeVscode();
+  const csvContent = 'Alice,2026-04,40.0\nBob,2026-04,32.0\n';
+  const project = {
+    config: {
+      projectId: 'alpha',
+      schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-04-01', endDate: '2026-05-31' },
+      effort: { total: 100, buffer: 10, actual: 0, budgetMode: 'inclusive' },
+      members: [],
+      calendar: { holidays: [], holidaySources: [] },
+      timesheetSource: { type: 'csv', path: 'timesheet.csv' },
+    },
+  };
+  const activated = activate({
+    vscode: fake.api,
+    readFile: async () => csvContent,
+    saveProjectConfig: async () => {},
+  });
+  activated.setProjects([project], project);
+
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  await fake.commands.find((x) => x.commandId === 'kousu.syncTimesheet').handler();
+
+  const panel = fake.webviewPanels[0];
+  const updateMsg = panel.postedMessages.find((m) => m.type === 'dashboard:update' && m.payload?.monthlyBreakdown);
+  assert.ok(updateMsg, 'expected a dashboard:update with monthlyBreakdown');
+  assert.deepEqual(updateMsg.payload.monthlyBreakdown.members, ['Alice', 'Bob']);
+});
+
 test('close disposes registered resources including dashboard panel', async () => {
   const fake = createFakeVscode();
   const activated = activate({ vscode: fake.api });
