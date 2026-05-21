@@ -1,8 +1,6 @@
 const DEFAULT_STATE = {
-  projectName: '-',
-  progressPercent: 0,
-  remainingPersonDays: 0,
-  alertLabel: '正常'
+  projects: [],
+  activeProjectId: null,
 };
 
 export class KousuSidebarProvider {
@@ -27,11 +25,21 @@ export class KousuSidebarProvider {
   }
 
   getChildren() {
-    return [
-      { label: `Project: ${this.state.projectName}`, collapsibleState: 0 },
-      { label: `Progress: ${this.state.progressPercent}%`, collapsibleState: 0 },
-      { label: `Remaining: ${this.state.remainingPersonDays} person_day`, collapsibleState: 0 },
-      { label: `Alert: ${this.state.alertLabel}`, collapsibleState: 0 }
-    ];
+    if (this.state.projects.length === 0) {
+      return [{ label: 'No projects loaded', collapsibleState: 0 }];
+    }
+    return this.state.projects.map((p) => {
+      const isActive = p.projectId === this.state.activeProjectId;
+      return {
+        label: (isActive ? '▶ ' : '  ') + p.projectId,
+        description: `${p.progressPercent ?? 0}%  ${p.alertLabel ?? '正常'}`,
+        collapsibleState: 0,
+        command: {
+          command: 'kousu.selectProjectById',
+          title: 'Select Project',
+          arguments: [p.projectId],
+        },
+      };
+    });
   }
 }
