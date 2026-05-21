@@ -8,6 +8,7 @@ import { validateProjectConfig } from './infrastructure/configValidator.js';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { syncTimesheetUsecase } from './application/usecases/syncTimesheet.js';
 
 const require = createRequire(import.meta.url);
 const vscode = require('vscode');
@@ -47,7 +48,7 @@ function createHolidayLoaders(workspaceRoot) {
   };
 }
 
-async function reloadAndSetProjects(workspaceRoot, result, today) {
+async function reloadAndSetProjects(workspaceRoot, result, today, readFileFn) {
   const { projects: newProjects } = await loadProjectConfigs(workspaceRoot)
     .catch(() => ({ projects: [] }));
   if (newProjects.length === 0) return;
@@ -63,6 +64,21 @@ async function reloadAndSetProjects(workspaceRoot, result, today) {
     totalWorkingDays: workingDays.length,
     remainingWorkingDays: workingDays.filter((d) => d > today),
   });
+
+  // timesheetSource が設定されていれば自動読み込みして monthlyBreakdown を復元
+  const source = active.config?.timesheetSource;
+  if (source?.path && readFileFn) {
+    const tsResult = await syncTimesheetUsecase({
+      project: active,
+      sourceType: source.type ?? 'csv',
+      sourcePath: source.path,
+      readFile: readFileFn,
+      saveProjectConfig: async () => {},
+    }).catch(() => null);
+    if (tsResult?.ok && tsResult.monthlyBreakdown) {
+      result.updateDashboard({ monthlyBreakdown: tsResult.monthlyBreakdown });
+    }
+  }
 }
 
 export async function activate(context) {
@@ -100,8 +116,13 @@ export async function activate(context) {
     },
   });
 
+  const readFileFn = (filePath) => readFile(
+    path.isAbsolute(filePath) ? filePath : path.join(workspaceRoot, filePath),
+    'utf8'
+  );
+
   if (projects.length > 0) {
-    await reloadAndSetProjects(workspaceRoot, result, today);
+    await reloadAndSetProjects(workspaceRoot, result, today, readFileFn);
   }
 
   if (conflicts.length > 0) {
@@ -113,7 +134,7 @@ export async function activate(context) {
     new (vscode.RelativePattern ?? Object)(workspaceRoot, '{kousu.config.json,kousu.projects/**/*.json}')
   );
   if (watcher) {
-    const onConfigChange = () => reloadAndSetProjects(workspaceRoot, result, today);
+    const onConfigChange = () => reloadAndSetProjects(workspaceRoot, result, today, readFileFn);
     watcher.onDidChange(onConfigChange);
     watcher.onDidCreate(onConfigChange);
     watcher.onDidDelete(onConfigChange);
