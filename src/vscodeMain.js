@@ -76,7 +76,7 @@ async function reloadAndSetProjects(workspaceRoot, result, today, readFileFn) {
       saveProjectConfig: async () => {},
     }).catch(() => null);
     if (tsResult?.ok && tsResult.monthlyBreakdown) {
-      result.updateDashboard({ monthlyBreakdown: tsResult.monthlyBreakdown });
+      result.setProjectBreakdown(active.config.projectId, tsResult.monthlyBreakdown);
     }
   }
 }

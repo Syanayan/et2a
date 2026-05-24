@@ -710,6 +710,95 @@ test('setTimesheetSource does nothing when dialog is cancelled', async () => {
   assert.equal(saved.length, 0);
 });
 
+test('TASK-36: selectProjectById restores per-project monthlyBreakdown', async () => {
+  const fake = createFakeVscode();
+  const alpha = {
+    config: {
+      projectId: 'alpha', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 100, buffer: 10, actual: 0, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+      timesheetSource: { type: 'csv', path: 'alpha.csv' },
+    },
+  };
+  const beta = {
+    config: {
+      projectId: 'beta', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 50, buffer: 5, actual: 0, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+      timesheetSource: { type: 'csv', path: 'beta.csv' },
+    },
+  };
+  const alphaBreakdown = { members: ['Alice'], months: ['2026-04'], data: { '2026-04': { Alice: 40 } } };
+  const betaBreakdown  = { members: ['Bob'],   months: ['2026-04'], data: { '2026-04': { Bob: 32 } } };
+
+  let csvTarget = 'alpha';
+  const activated = activate({
+    vscode: fake.api,
+    readFile: async () => csvTarget === 'alpha' ? 'Alice,2026-04,40.0\n' : 'Bob,2026-04,32.0\n',
+    saveProjectConfig: async () => {},
+  });
+  activated.setProjects([alpha, beta], alpha);
+
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+
+  // alpha のタイムシートを同期
+  await fake.commands.find((x) => x.commandId === 'kousu.syncTimesheet').handler();
+
+  // beta に切り替えてタイムシートを同期
+  csvTarget = 'beta';
+  await fake.commands.find((x) => x.commandId === 'kousu.selectProjectById').handler('beta');
+  await fake.commands.find((x) => x.commandId === 'kousu.syncTimesheet').handler();
+
+  // alpha に戻す → alpha の breakdown が復元される
+  await fake.commands.find((x) => x.commandId === 'kousu.selectProjectById').handler('alpha');
+
+  const panel = fake.webviewPanels[0];
+  const lastUpdate = [...panel.postedMessages].reverse().find((m) => m.type === 'dashboard:update');
+  assert.deepEqual(lastUpdate.payload.monthlyBreakdown, alphaBreakdown);
+});
+
+test('TASK-36: setProjectBreakdown updates dashboard for active project only', async () => {
+  const fake = createFakeVscode();
+  const alpha = {
+    config: {
+      projectId: 'alpha', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 100, buffer: 10, actual: 0, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+    },
+  };
+  const beta = {
+    config: {
+      projectId: 'beta', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 50, buffer: 5, actual: 0, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+    },
+  };
+  const alphaBreakdown = { members: ['Alice'], months: ['2026-04'], data: { '2026-04': { Alice: 40 } } };
+  const betaBreakdown  = { members: ['Bob'],   months: ['2026-04'], data: { '2026-04': { Bob: 32 } } };
+
+  const activated = activate({ vscode: fake.api });
+  activated.setProjects([alpha, beta], alpha);
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+
+  // alpha がアクティブな状態で alpha の breakdown をセット → dashboard に反映される
+  activated.setProjectBreakdown('alpha', alphaBreakdown);
+  // beta の breakdown をセット → dashboard には反映されない（非アクティブ）
+  activated.setProjectBreakdown('beta', betaBreakdown);
+
+  const panel = fake.webviewPanels[0];
+  const lastUpdate = [...panel.postedMessages].reverse().find((m) => m.type === 'dashboard:update');
+  assert.deepEqual(lastUpdate.payload.monthlyBreakdown, alphaBreakdown);
+
+  // beta に切り替え → beta の breakdown が表示される
+  await fake.commands.find((x) => x.commandId === 'kousu.selectProjectById').handler('beta');
+  const afterSwitch = [...panel.postedMessages].reverse().find((m) => m.type === 'dashboard:update');
+  assert.deepEqual(afterSwitch.payload.monthlyBreakdown, betaBreakdown);
+});
+
 test('close disposes registered resources including dashboard panel', async () => {
   const fake = createFakeVscode();
   const activated = activate({ vscode: fake.api });

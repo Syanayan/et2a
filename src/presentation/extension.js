@@ -30,6 +30,7 @@ export function activate(options = {}) {
   const disposables = [];
   const mutableWorkingDayContext = { ...workingDayContext };
   const effortHistory = [];
+  const breakdownByProject = new Map();
 
   function refreshSidebar(activeProj, forecast, alert) {
     if (!provider) return;
@@ -175,7 +176,7 @@ export function activate(options = {}) {
       if (!found) return;
       activeProject = found;
       refreshSidebar(activeProject, null, null);
-      dashboard.update({ project: activeProject });
+      dashboard.update({ project: activeProject, monthlyBreakdown: breakdownByProject.get(projectId) ?? null });
     }));
 
     disposables.push(vscode.commands.registerCommand('kousu.selectProject', async () => {
@@ -290,8 +291,12 @@ export function activate(options = {}) {
           today,
           mutableWorkingDayContext.totalWorkingDays ?? 0,
         );
+        const projectId = activeProject.config?.projectId;
+        if (projectId && result.monthlyBreakdown) {
+          breakdownByProject.set(projectId, result.monthlyBreakdown);
+        }
         refreshSidebar(activeProject, null, null);
-        dashboard.update({ project: activeProject, burndown, weeklyEffort, monthlyBreakdown: result.monthlyBreakdown ?? null });
+        dashboard.update({ project: activeProject, burndown, weeklyEffort, monthlyBreakdown: breakdownByProject.get(projectId) ?? null });
       }
     }));
 
@@ -313,6 +318,12 @@ export function activate(options = {}) {
       }
     },
     updateDashboard: (state) => dashboard.update(state),
+    setProjectBreakdown: (projectId, breakdown) => {
+      breakdownByProject.set(projectId, breakdown);
+      if (activeProject?.config?.projectId === projectId) {
+        dashboard.update({ monthlyBreakdown: breakdown });
+      }
+    },
     notifyDashboardError: (message) => dashboard.error(message),
     notify: (notification) => notifier.notify(notification),
     close: () => {
