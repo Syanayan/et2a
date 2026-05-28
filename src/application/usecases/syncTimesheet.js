@@ -16,15 +16,21 @@ export async function syncTimesheetUsecase(params) {
 
   let total;
   let monthlyBreakdown = null;
+  let projectUpdates = null;
   try {
     const content = await readFile(sourcePath);
     if (sourceType === 'json') {
-      const rows = (content ?? '').trim() ? JSON.parse(content) : [];
-      if (isNestedJson(rows)) {
-        monthlyBreakdown = parseJsonMonthly(rows);
+      const parsed = (content ?? '').trim() ? JSON.parse(content) : [];
+      if (isProjectJson(parsed)) {
+        const result = parseProjectJson(parsed);
+        monthlyBreakdown = result.monthlyBreakdown;
+        total = totalFromBreakdown(monthlyBreakdown);
+        projectUpdates = result.updates;
+      } else if (isNestedJson(parsed)) {
+        monthlyBreakdown = parseJsonMonthly(parsed);
         total = totalFromBreakdown(monthlyBreakdown);
       } else {
-        total = rows.reduce((sum, row) => {
+        total = (parsed ?? []).reduce((sum, row) => {
           const hours = parseFloat(row.hours ?? row.actual ?? 0);
           return sum + (Number.isFinite(hours) ? hours : 0);
         }, 0);
@@ -44,10 +50,25 @@ export async function syncTimesheetUsecase(params) {
     };
   }
 
-  const nextConfig = {
+  let nextConfig = {
     ...project.config,
     effort: { ...project.config.effort, actual: total },
   };
+  if (projectUpdates) {
+    if (projectUpdates.total != null) {
+      nextConfig = { ...nextConfig, effort: { ...nextConfig.effort, total: projectUpdates.total } };
+    }
+    if (projectUpdates.endDate || projectUpdates.startDate) {
+      nextConfig = {
+        ...nextConfig,
+        schedule: {
+          ...nextConfig.schedule,
+          ...(projectUpdates.startDate ? { startDate: projectUpdates.startDate } : {}),
+          ...(projectUpdates.endDate   ? { endDate:   projectUpdates.endDate   } : {}),
+        },
+      };
+    }
+  }
 
   await saveProjectConfig(nextConfig);
 
@@ -57,6 +78,50 @@ export async function syncTimesheetUsecase(params) {
     monthlyBreakdown,
     notification: { level: 'info', message: `Timesheet synced. Total: ${total}` },
   };
+}
+
+function normalizeMonth(key) {
+  const [year, month] = String(key).split('-');
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function isProjectJson(parsed) {
+  return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) && 'Users' in parsed;
+}
+
+function parseProjectJson(parsed) {
+  const membersSet = new Set();
+  const monthsSet = new Set();
+  const data = {};
+
+  (parsed.Users ?? []).forEach((user) => {
+    const name = user.name;
+    membersSet.add(name);
+    Object.entries(user.manHour ?? {}).forEach(([rawMonth, hoursStr]) => {
+      const month = normalizeMonth(rawMonth);
+      const hours = parseFloat(hoursStr);
+      if (!Number.isFinite(hours)) return;
+      monthsSet.add(month);
+      if (!data[month]) data[month] = {};
+      data[month][name] = hours;
+    });
+  });
+
+  const months = [...monthsSet].sort();
+  const monthlyBreakdown = { members: [...membersSet].sort(), months, data };
+
+  const rawTotal = parsed.UsedOrder != null
+    ? parseFloat(String(parsed.UsedOrder).replace(/[^\d.]/g, ''))
+    : NaN;
+  const total = Number.isFinite(rawTotal) ? rawTotal : null;
+
+  const endDate = parsed.deadline
+    ? String(parsed.deadline).replace(/\//g, '-')
+    : null;
+
+  const startDate = months.length > 0 ? `${months[0]}-01` : null;
+
+  return { monthlyBreakdown, updates: { total, endDate, startDate } };
 }
 
 function isMonthlyCsv(content) {

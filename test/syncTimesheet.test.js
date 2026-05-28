@@ -100,6 +100,93 @@ test('3列CSV を解析して monthlyBreakdown が生成される', async () => 
   });
 });
 
+test('プロジェクトJSON形式（Users/UsedOrder）を解析して monthlyBreakdown が生成される', async () => {
+  const json = JSON.stringify({
+    ProjectName: 'テストPJ',
+    deadline: '2026/06/30',
+    UsedOrder: '200H',
+    Users: [
+      { name: 'memberA', manHour: { '2026-4': '0.0', '2026-5': '8.5' } },
+      { name: 'memberB', manHour: { '2026-4': '0.0', '2026-5': '0.5' } },
+    ],
+  });
+
+  const result = await syncTimesheetUsecase({
+    project: baseProject,
+    sourceType: 'json',
+    readFile: async () => json,
+    saveProjectConfig: async () => {},
+  });
+
+  assert.ok(result.ok);
+  // 月キーがゼロ埋めされる
+  assert.deepEqual(result.monthlyBreakdown.months, ['2026-04', '2026-05']);
+  assert.deepEqual(result.monthlyBreakdown.members, ['memberA', 'memberB']);
+  assert.deepEqual(result.monthlyBreakdown.data, {
+    '2026-04': { memberA: 0.0, memberB: 0.0 },
+    '2026-05': { memberA: 8.5, memberB: 0.5 },
+  });
+  // effort.actual = 全月合計
+  assert.equal(result.project.config.effort.actual, 9.0);
+});
+
+test('プロジェクトJSON: UsedOrder から総工数が設定される', async () => {
+  const json = JSON.stringify({
+    ProjectName: 'テストPJ',
+    deadline: '2026/06/30',
+    UsedOrder: '1100H',
+    Users: [{ name: 'memberA', manHour: { '2026-5': '10.0' } }],
+  });
+
+  const result = await syncTimesheetUsecase({
+    project: baseProject,
+    sourceType: 'json',
+    readFile: async () => json,
+    saveProjectConfig: async () => {},
+  });
+
+  assert.ok(result.ok);
+  assert.equal(result.project.config.effort.total, 1100);
+});
+
+test('プロジェクトJSON: deadline から終了日が設定される', async () => {
+  const json = JSON.stringify({
+    ProjectName: 'テストPJ',
+    deadline: '2026/06/30',
+    UsedOrder: '100H',
+    Users: [{ name: 'memberA', manHour: { '2026-5': '5.0' } }],
+  });
+
+  const result = await syncTimesheetUsecase({
+    project: baseProject,
+    sourceType: 'json',
+    readFile: async () => json,
+    saveProjectConfig: async () => {},
+  });
+
+  assert.ok(result.ok);
+  assert.equal(result.project.config.schedule.endDate, '2026-06-30');
+});
+
+test('プロジェクトJSON: 最古月から開始日が導出される', async () => {
+  const json = JSON.stringify({
+    ProjectName: 'テストPJ',
+    deadline: '2026/06/30',
+    UsedOrder: '100H',
+    Users: [{ name: 'memberA', manHour: { '2026-5': '5.0', '2026-4': '3.0' } }],
+  });
+
+  const result = await syncTimesheetUsecase({
+    project: baseProject,
+    sourceType: 'json',
+    readFile: async () => json,
+    saveProjectConfig: async () => {},
+  });
+
+  assert.ok(result.ok);
+  assert.equal(result.project.config.schedule.startDate, '2026-04-01');
+});
+
 test('ネストJSON を解析して monthlyBreakdown が生成される', async () => {
   const jsonContent = JSON.stringify([
     { name: 'Alice', months: { '2026-04': 40.0, '2026-05': 20.0 } },

@@ -27,7 +27,17 @@ export class KousuDashboard {
     );
     this.panel.webview.html = this.renderHtml();
     this.post('dashboard:init', this.state);
+    if (this._messageHandler) {
+      this.panel.webview.onDidReceiveMessage(this._messageHandler);
+    }
     return this.panel;
+  }
+
+  onMessage(handler) {
+    this._messageHandler = handler;
+    if (this.panel) {
+      this.panel.webview.onDidReceiveMessage(handler);
+    }
   }
 
   async update(nextState) {
@@ -91,6 +101,7 @@ export class KousuDashboard {
       <p>タスクの進捗と工数使用状況です。</p>
     </div>
     <div class="header-actions">
+      <button id="btn-sync">同期</button>
       <button id="btn-report">レポート出力</button>
       <button id="btn-settings">⚙</button>
     </div>
@@ -329,6 +340,10 @@ export class KousuDashboard {
       drawWeeklyChart(state);
       renderMonthlyTable(state);
     }
+
+    document.getElementById('btn-sync')?.addEventListener('click', () => {
+      vscode?.postMessage({ type: 'action', payload: { command: 'syncTimesheet' } });
+    });
 
     window.addEventListener('message', (event) => {
       const { type, payload } = event.data || {};

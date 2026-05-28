@@ -22,7 +22,11 @@ function createFakeVscode() {
         registerCommand(commandId, handler) {
           commands.push({ commandId, handler });
           return { dispose() { disposedCount += 1; } };
-        }
+        },
+        async executeCommand(commandId, ...args) {
+          const cmd = commands.find((c) => c.commandId === commandId);
+          return cmd?.handler?.(...args);
+        },
       },
       window: {
         showInputBox: async () => undefined,
@@ -708,6 +712,43 @@ test('setTimesheetSource does nothing when dialog is cancelled', async () => {
   await fake.commands.find((x) => x.commandId === 'kousu.setTimesheetSource').handler();
 
   assert.equal(saved.length, 0);
+});
+
+test('dashboard HTML has sync button', async () => {
+  const fake = createFakeVscode();
+  activate({ vscode: fake.api });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const { html } = fake.webviewPanels[0].webview;
+  assert.match(html, /id="btn-sync"/);
+});
+
+test('clicking sync button in webview executes kousu.syncTimesheet', async () => {
+  const fake = createFakeVscode();
+  const saved = [];
+  const project = {
+    config: {
+      projectId: 'alpha', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 100, buffer: 10, actual: 0, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+      timesheetSource: { type: 'csv', path: 'ts.csv' },
+    },
+  };
+
+  const activated = activate({
+    vscode: fake.api,
+    readFile: async () => 'Alice,2026-04,40.0\n',
+    saveProjectConfig: async (c) => saved.push(c),
+  });
+  activated.setProjects([project], project);
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+
+  const panel = fake.webviewPanels[0];
+  // webview からのメッセージをシミュレート（ボタンクリック）
+  await panel.handlers[0]({ type: 'action', payload: { command: 'syncTimesheet' } });
+
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].effort.actual, 40);
 });
 
 test('TASK-36: selectProjectById restores per-project monthlyBreakdown', async () => {

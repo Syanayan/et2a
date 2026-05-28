@@ -24,6 +24,11 @@ export function activate(options = {}) {
   } = options;
 
   const dashboard = new KousuDashboard(vscode, initialDashboardState);
+  dashboard.onMessage(async (message) => {
+    if (message?.type === 'action' && message?.payload?.command) {
+      await vscode?.commands?.executeCommand?.(`kousu.${message.payload.command}`);
+    }
+  });
   const notifier = new NotificationRouter(vscode, options.now);
   let activeProject = null;
   let provider = null;
