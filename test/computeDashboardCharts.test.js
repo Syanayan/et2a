@@ -50,37 +50,79 @@ test('computeWeeklyEffort returns 0 actual for days not in history', () => {
   assert.ok(result.every((r) => r.actual === 0));
 });
 
-// --- computeBurndown ---
+// --- computeBurndown (月次バーンダウン) ---
 
-test('computeBurndown returns one entry per history record', () => {
-  const history = [
-    { date: '2026-05-01', actual: 5 },
-    { date: '2026-05-02', actual: 10 },
-    { date: '2026-05-05', actual: 18 },
-  ];
-  const result = computeBurndown(history, project);
+const bdProject = {
+  config: {
+    schedule: { startDate: '2026-04-01', endDate: '2026-06-30' },
+    effort: { total: 200, buffer: 20, actual: 0, budgetMode: 'inclusive' },
+    calendar: { holidays: [] },
+  },
+};
+
+test('computeBurndown returns one entry per month from startDate to endDate', () => {
+  const result = computeBurndown(null, bdProject);
   assert.equal(result.length, 3);
+  assert.equal(result[0].month, '2026-04');
+  assert.equal(result[1].month, '2026-05');
+  assert.equal(result[2].month, '2026-06');
 });
 
-test('computeBurndown includes actual and predicted fields', () => {
-  const history = [{ date: '2026-05-01', actual: 5 }];
-  const result = computeBurndown(history, project);
-  assert.ok('actual' in result[0]);
-  assert.ok('predicted' in result[0]);
-  assert.ok('date' in result[0]);
+test('computeBurndown ideal line decreases linearly from total to 0', () => {
+  const result = computeBurndown(null, bdProject);
+  assert.equal(result[0].ideal, 200);
+  assert.equal(result[result.length - 1].ideal, 0);
 });
 
-test('computeBurndown entries are sorted by date', () => {
-  const history = [
-    { date: '2026-05-05', actual: 18 },
-    { date: '2026-05-01', actual: 5 },
-  ];
-  const result = computeBurndown(history, project);
-  assert.equal(result[0].date, '2026-05-01');
-  assert.equal(result[1].date, '2026-05-05');
+test('computeBurndown remaining is null when no monthly data', () => {
+  const result = computeBurndown(null, bdProject);
+  assert.ok(result.every((r) => r.remaining === null));
 });
 
-test('computeBurndown returns empty array for empty history', () => {
-  const result = computeBurndown([], project);
+test('computeBurndown remaining decreases as cumulative effort increases', () => {
+  const monthly = {
+    members: ['Alice', 'Bob'],
+    months: ['2026-04', '2026-05'],
+    data: {
+      '2026-04': { Alice: 40, Bob: 32 },  // 累計 72
+      '2026-05': { Alice: 20 },            // 累計 92
+    },
+  };
+  const result = computeBurndown(monthly, bdProject);
+  assert.equal(result.find((r) => r.month === '2026-04').remaining, 128); // 200-72
+  assert.equal(result.find((r) => r.month === '2026-05').remaining, 108); // 200-92
+  assert.equal(result.find((r) => r.month === '2026-06').remaining, null); // データなし
+});
+
+test('computeBurndown predicted extends linearly from last actual to 0 at end', () => {
+  const monthly = {
+    members: ['Alice'],
+    months: ['2026-04'],
+    data: { '2026-04': { Alice: 80 } }, // 累計80, 残120
+  };
+  const result = computeBurndown(monthly, bdProject);
+  assert.equal(result[0].predicted, 120); // 最終実績点
+  assert.equal(result[result.length - 1].predicted, 0); // 終了日に0
+});
+
+test('computeBurndown predicted ends at total-effort.predicted when set', () => {
+  const proj = {
+    config: {
+      ...bdProject.config,
+      effort: { ...bdProject.config.effort, predicted: 160 },
+    },
+  };
+  const monthly = {
+    members: ['Alice'],
+    months: ['2026-04'],
+    data: { '2026-04': { Alice: 40 } }, // 残160
+  };
+  const result = computeBurndown(monthly, proj);
+  // 終了日: predicted = total - effort.predicted = 200 - 160 = 40
+  assert.equal(result[result.length - 1].predicted, 40);
+});
+
+test('computeBurndown returns empty array when project has no schedule', () => {
+  const result = computeBurndown(null, { config: { effort: { total: 100 } } });
   assert.deepEqual(result, []);
 });

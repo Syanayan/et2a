@@ -117,8 +117,8 @@ export class KousuDashboard {
       <div class="kpi-value"><span id="kpi-actual">-</span><span>h</span></div>
       <div class="kpi-sub">消化率 <span id="kpi-actual-rate">-</span>%</div>
     </div>
-    <div class="kpi-card">
-      <div class="kpi-label">最終使用予想工数</div>
+    <div class="kpi-card" id="kpi-predicted-wrap" title="クリックして編集" style="cursor:pointer">
+      <div class="kpi-label">最終使用予想工数 <span style="font-size:0.7rem;color:#585b70">✎</span></div>
       <div class="kpi-value"><span id="kpi-predicted">-</span><span>h</span></div>
       <div class="kpi-sub">予算比 <span id="kpi-predicted-rate">-</span>%</div>
     </div>
@@ -180,10 +180,22 @@ export class KousuDashboard {
       const rows = Array.isArray(state.burndown) ? state.burndown : [];
       if (rows.length === 0) return;
       const W = 640, H = 220;
-      const actualSeries = rows.map((row) => Number(row.actual ?? row.actualEffort ?? 0));
-      const predictedSeries = rows.map((row) => Number(row.predicted ?? row.predictedTotalEffort ?? row.actual ?? 0));
-      const maxY = Math.max(1, ...actualSeries, ...predictedSeries);
 
+      // 新フォーマット: { month, ideal, remaining, predicted }
+      // 旧フォーマット互換: { date, actual, predicted }
+      const isNewFormat = rows.some((r) => 'ideal' in r);
+      const idealSeries   = rows.map((r) => Number(isNewFormat ? r.ideal : (r.predicted ?? r.actual ?? 0)));
+      const remainingSeries = rows.map((r) => isNewFormat ? r.remaining : r.actual);
+      const predictedSeries = rows.map((r) => isNewFormat ? r.predicted : null);
+
+      const allValues = [
+        ...idealSeries,
+        ...remainingSeries.filter((v) => v != null),
+        ...predictedSeries.filter((v) => v != null),
+      ];
+      const maxY = Math.max(1, ...allValues);
+
+      // グリッド線
       const gridCount = 4;
       for (let i = 0; i <= gridCount; i++) {
         const y = Math.round(10 + (H - 20) * i / gridCount);
@@ -200,41 +212,69 @@ export class KousuDashboard {
         svg.appendChild(label);
       }
 
+      // X軸ラベル
       const stepX = rows.length > 1 ? W / (rows.length - 1) : W / 2;
-      rows.forEach((row, index) => {
-        const x = Math.round(index * stepX);
+      rows.forEach((row, i) => {
+        const x = Math.round(i * stepX);
         const xLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         xLabel.setAttribute('class', 'x-label');
         xLabel.setAttribute('x', String(x)); xLabel.setAttribute('y', String(H));
         xLabel.setAttribute('fill', '#a6adc8'); xLabel.setAttribute('font-size', '10');
         xLabel.setAttribute('text-anchor', 'middle');
-        xLabel.textContent = row.date ? row.date.slice(5) : String(index + 1);
+        const rawLabel = row.month ?? row.date ?? String(i + 1);
+        xLabel.textContent = rawLabel.length >= 7 ? rawLabel.slice(5) + '月' : rawLabel;
         svg.appendChild(xLabel);
       });
 
-      const predictedLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-      predictedLine.setAttribute('fill', 'none');
-      predictedLine.setAttribute('stroke', '#888');
-      predictedLine.setAttribute('stroke-width', '2');
-      predictedLine.setAttribute('stroke-dasharray', '4 4');
-      predictedLine.setAttribute('points', pointsFromSeries(predictedSeries, W, H, maxY));
-      svg.appendChild(predictedLine);
+      // 理想線（グレー破線）
+      const idealLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      idealLine.setAttribute('fill', 'none');
+      idealLine.setAttribute('stroke', '#888');
+      idealLine.setAttribute('stroke-width', '2');
+      idealLine.setAttribute('stroke-dasharray', '4 4');
+      idealLine.setAttribute('points', pointsFromSeries(idealSeries, W, H, maxY));
+      svg.appendChild(idealLine);
 
-      const actualLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-      actualLine.setAttribute('fill', 'none');
-      actualLine.setAttribute('stroke', '#c8e06b');
-      actualLine.setAttribute('stroke-width', '2');
-      actualLine.setAttribute('points', pointsFromSeries(actualSeries, W, H, maxY));
-      svg.appendChild(actualLine);
+      // 予想残工数線（青破線）: predicted が null でない区間だけ描画
+      const predPoints = rows.map((r, i) => ({ i, v: predictedSeries[i] })).filter((p) => p.v != null);
+      if (predPoints.length >= 2) {
+        const predLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        predLine.setAttribute('fill', 'none');
+        predLine.setAttribute('stroke', '#89b4fa');
+        predLine.setAttribute('stroke-width', '2');
+        predLine.setAttribute('stroke-dasharray', '6 3');
+        predLine.setAttribute('points', predPoints.map((p) => {
+          const x = Math.round(p.i * stepX);
+          const y = Math.round(H - (p.v / maxY) * (H - 20) - 10);
+          return x + ',' + y;
+        }).join(' '));
+        svg.appendChild(predLine);
+      }
 
-      actualSeries.forEach((value, index) => {
-        const x = Math.round(index * stepX);
-        const y = Math.round(H - (Math.max(0, value) / maxY) * (H - 20) - 10);
-        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        circle.setAttribute('cx', String(x)); circle.setAttribute('cy', String(y));
-        circle.setAttribute('r', '4'); circle.setAttribute('fill', '#c8e06b');
-        svg.appendChild(circle);
-      });
+      // 実績残工数線（黄緑）: remaining が null でない区間
+      const remPoints = rows.map((r, i) => ({ i, v: remainingSeries[i] })).filter((p) => p.v != null);
+      if (remPoints.length >= 1) {
+        if (remPoints.length >= 2) {
+          const remLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+          remLine.setAttribute('fill', 'none');
+          remLine.setAttribute('stroke', '#c8e06b');
+          remLine.setAttribute('stroke-width', '2');
+          remLine.setAttribute('points', remPoints.map((p) => {
+            const x = Math.round(p.i * stepX);
+            const y = Math.round(H - (p.v / maxY) * (H - 20) - 10);
+            return x + ',' + y;
+          }).join(' '));
+          svg.appendChild(remLine);
+        }
+        remPoints.forEach((p) => {
+          const x = Math.round(p.i * stepX);
+          const y = Math.round(H - (p.v / maxY) * (H - 20) - 10);
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('cx', String(x)); circle.setAttribute('cy', String(y));
+          circle.setAttribute('r', '4'); circle.setAttribute('fill', '#c8e06b');
+          svg.appendChild(circle);
+        });
+      }
     }
 
     function drawWeeklyChart(state = {}) {
@@ -324,7 +364,7 @@ export class KousuDashboard {
       const effort = state.project?.config?.effort ?? {};
       const total = effort.total ?? kpi.total;
       const actual = effort.actual ?? kpi.actual;
-      const predicted = forecast.predictedTotalEffort ?? kpi.predictedTotalEffort;
+      const predicted = effort.predicted ?? forecast.predictedTotalEffort ?? kpi.predictedTotalEffort;
       const remaining = forecast.remainingEffort ?? kpi.remainingEffort;
       setText('kpi-total', total ?? '-');
       setText('kpi-actual', actual ?? '-');
@@ -343,6 +383,36 @@ export class KousuDashboard {
 
     document.getElementById('btn-sync')?.addEventListener('click', () => {
       vscode?.postMessage({ type: 'action', payload: { command: 'syncTimesheet' } });
+    });
+
+    document.getElementById('kpi-predicted-wrap')?.addEventListener('click', () => {
+      const wrap = byId('kpi-predicted-wrap');
+      const current = byId('kpi-predicted')?.textContent ?? '';
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0';
+      input.value = current !== '-' ? current : '';
+      input.placeholder = '予想工数(h)';
+      input.style.cssText = 'width:90px;font-size:1.4rem;font-weight:700;background:#45475a;color:#cdd6f4;border:1px solid #89b4fa;border-radius:4px;padding:2px 6px;outline:none;';
+      const valueDiv = wrap.querySelector('.kpi-value');
+      if (!valueDiv || wrap.querySelector('input')) return;
+      valueDiv.replaceChildren(input);
+      input.focus();
+      input.select();
+      const confirm = () => {
+        const val = parseFloat(input.value);
+        if (Number.isFinite(val) && val >= 0) {
+          vscode?.postMessage({ type: 'action', payload: { command: 'updatePredicted', value: val } });
+        } else {
+          setText('kpi-predicted', current);
+          valueDiv.replaceChildren(byId('kpi-predicted') ?? input);
+        }
+      };
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { input.blur(); }
+        if (e.key === 'Escape') { setText('kpi-predicted', current); }
+      });
+      input.addEventListener('blur', confirm, { once: true });
     });
 
     window.addEventListener('message', (event) => {

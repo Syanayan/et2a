@@ -22,6 +22,7 @@
       { "command": "kousu.syncHolidays", "title": "Sync Holidays", "category": "Kousu" },
       { "command": "kousu.syncTimesheet", "title": "Sync Timesheet", "category": "Kousu" },
       { "command": "kousu.newProject", "title": "New Project", "category": "Kousu" },
+      { "command": "kousu.updatePredicted", "title": "Update Predicted Effort", "category": "Kousu" },
       { "command": "kousu.setTimesheetSource", "title": "Set Timesheet Source", "category": "Kousu" }
     ],
     "viewsContainers": {

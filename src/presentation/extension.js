@@ -26,7 +26,10 @@ export function activate(options = {}) {
   const dashboard = new KousuDashboard(vscode, initialDashboardState);
   dashboard.onMessage(async (message) => {
     if (message?.type === 'action' && message?.payload?.command) {
-      await vscode?.commands?.executeCommand?.(`kousu.${message.payload.command}`);
+      await vscode?.commands?.executeCommand?.(
+        `kousu.${message.payload.command}`,
+        message.payload.value
+      );
     }
   });
   const notifier = new NotificationRouter(vscode, options.now);
@@ -117,6 +120,23 @@ export function activate(options = {}) {
       dashboard.open();
       dashboard.update({ project: activeProject });
       notifier.notify({ level: 'info', message: 'Project initialized.' });
+    }));
+
+    disposables.push(vscode.commands.registerCommand('kousu.updatePredicted', async (value) => {
+      if (!activeProject) {
+        vscode.window.showWarningMessage('No project selected.');
+        return;
+      }
+      const predicted = Number(value);
+      if (!Number.isFinite(predicted) || predicted < 0) return;
+      const nextConfig = {
+        ...activeProject.config,
+        effort: { ...activeProject.config.effort, predicted },
+      };
+      await (saveProjectConfig ?? (() => Promise.resolve()))(nextConfig);
+      activeProject = { ...activeProject, config: nextConfig };
+      dashboard.update({ project: activeProject });
+      notifier.notify({ level: 'info', message: `予想工数を ${predicted}h に更新しました。` });
     }));
 
     disposables.push(vscode.commands.registerCommand('kousu.newProject', async () => {
@@ -229,7 +249,7 @@ export function activate(options = {}) {
         } else {
           effortHistory.push({ date: today, actual: Number(input) });
         }
-        const burndown = computeBurndown(effortHistory, activeProject);
+        const burndown = computeBurndown(breakdownByProject.get(activeProject?.config?.projectId) ?? null, activeProject);
         const weeklyEffort = computeWeeklyEffort(
           effortHistory,
           activeProject,
@@ -289,7 +309,7 @@ export function activate(options = {}) {
         } else {
           effortHistory.push({ date: today, actual });
         }
-        const burndown = computeBurndown(effortHistory, activeProject);
+        const burndown = computeBurndown(breakdownByProject.get(activeProject?.config?.projectId) ?? null, activeProject);
         const weeklyEffort = computeWeeklyEffort(
           effortHistory,
           activeProject,

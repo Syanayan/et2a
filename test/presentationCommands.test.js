@@ -103,7 +103,8 @@ test('registers required commands and sidebar TreeView nodes', async () => {
       'kousu.setTimesheetSource',
       'kousu.syncHolidays',
       'kousu.syncTimesheet',
-      'kousu.updateActual'
+      'kousu.updateActual',
+      'kousu.updatePredicted',
     ]
   );
 
@@ -712,6 +713,83 @@ test('setTimesheetSource does nothing when dialog is cancelled', async () => {
   await fake.commands.find((x) => x.commandId === 'kousu.setTimesheetSource').handler();
 
   assert.equal(saved.length, 0);
+});
+
+test('updatePredicted command saves effort.predicted to config', async () => {
+  const fake = createFakeVscode();
+  const saved = [];
+  const project = {
+    config: {
+      projectId: 'alpha', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 100, buffer: 10, actual: 40, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+    },
+  };
+
+  const activated = activate({
+    vscode: fake.api,
+    saveProjectConfig: async (c) => saved.push(c),
+  });
+  activated.setProjects([project], project);
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+
+  await fake.commands.find((x) => x.commandId === 'kousu.updatePredicted').handler(150);
+
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].effort.predicted, 150);
+});
+
+test('webview message updatePredicted passes value to command', async () => {
+  const fake = createFakeVscode();
+  const saved = [];
+  const project = {
+    config: {
+      projectId: 'alpha', schemaVersion: '1.0.0',
+      schedule: { startDate: '2026-05-01', endDate: '2026-06-30' },
+      effort: { total: 100, buffer: 10, actual: 40, budgetMode: 'inclusive' },
+      members: [], calendar: { holidays: [], holidaySources: [] },
+    },
+  };
+
+  const activated = activate({
+    vscode: fake.api,
+    saveProjectConfig: async (c) => saved.push(c),
+  });
+  activated.setProjects([project], project);
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+
+  const panel = fake.webviewPanels[0];
+  await panel.handlers[0]({ type: 'action', payload: { command: 'updatePredicted', value: 120 } });
+
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].effort.predicted, 120);
+});
+
+test('dashboard HTML predicted KPI has editable indicator', async () => {
+  const fake = createFakeVscode();
+  activate({ vscode: fake.api });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const { html } = fake.webviewPanels[0].webview;
+  assert.match(html, /id="kpi-predicted-wrap"/);
+  assert.match(html, /updatePredicted/);
+});
+
+test('dashboard init message prefers effort.predicted over forecast', async () => {
+  const fake = createFakeVscode();
+  const state = {
+    project: {
+      config: {
+        effort: { total: 100, buffer: 10, actual: 40, predicted: 88, budgetMode: 'inclusive' },
+      },
+    },
+    forecast: { predictedTotalEffort: 70, remainingEffort: 30 },
+  };
+  activate({ vscode: fake.api, initialDashboardState: state });
+  fake.commands.find((x) => x.commandId === 'kousu.openDashboard').handler();
+  const panel = fake.webviewPanels[0];
+  const init = panel.postedMessages.find((m) => m.type === 'dashboard:init');
+  assert.equal(init.payload.project.config.effort.predicted, 88);
 });
 
 test('dashboard HTML has sync button', async () => {
