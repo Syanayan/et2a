@@ -365,7 +365,8 @@ export class KousuDashboard {
       const total = effort.total ?? kpi.total;
       const actual = effort.actual ?? kpi.actual;
       const predicted = effort.predicted ?? forecast.predictedTotalEffort ?? kpi.predictedTotalEffort;
-      const remaining = forecast.remainingEffort ?? kpi.remainingEffort;
+      const remaining = forecast.remainingEffort ?? kpi.remainingEffort
+        ?? (total != null && actual != null ? Math.max(0, total - actual) : null);
       setText('kpi-total', total ?? '-');
       setText('kpi-actual', actual ?? '-');
       setText('kpi-predicted', predicted ?? '-');
