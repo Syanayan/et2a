@@ -309,17 +309,17 @@ export function activate(options = {}) {
         } else {
           effortHistory.push({ date: today, actual });
         }
-        const burndown = computeBurndown(breakdownByProject.get(activeProject?.config?.projectId) ?? null, activeProject);
+        const projectId = activeProject.config?.projectId;
+        if (projectId && result.monthlyBreakdown) {
+          breakdownByProject.set(projectId, result.monthlyBreakdown);
+        }
+        const burndown = computeBurndown(breakdownByProject.get(projectId) ?? null, activeProject);
         const weeklyEffort = computeWeeklyEffort(
           effortHistory,
           activeProject,
           today,
           mutableWorkingDayContext.totalWorkingDays ?? 0,
         );
-        const projectId = activeProject.config?.projectId;
-        if (projectId && result.monthlyBreakdown) {
-          breakdownByProject.set(projectId, result.monthlyBreakdown);
-        }
         refreshSidebar(activeProject, null, null);
         dashboard.update({ project: activeProject, burndown, weeklyEffort, monthlyBreakdown: breakdownByProject.get(projectId) ?? null });
       }
